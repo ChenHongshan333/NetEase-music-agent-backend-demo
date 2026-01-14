@@ -38,11 +38,12 @@ This project demonstrates a minimal RAG pipeline with production-minded engineer
 - **dev (default):** H2 in-memory, zero infrastructure required
 - **prod:** MySQL persistence + Redis caching (Docker Compose), closer to real-world deployment
 
-### 3. Redis Caching (Hot Query Optimization)
-- Cache-first: check Redis before retrieval/LLM
-- TTL-based write-back on cache miss
-- **Stability:** Redis failures degrade gracefully (cache layer does not break the main request path)
-- **Correctness note:** refusal responses (`hits==0`) should not be cached for long to avoid stale refusal after KB updates
+### 3) Redis Caching (Hot Query Optimization)
+- **Cache-First Strategy:** Checks Redis before triggering retrieval or LLM inference to reduce latency and token costs.
+- **Smart TTL:**
+  - **Standard Answer:** Long TTL (e.g., 10 min) for high cache hit rate.
+  - **Refusal (Hits=0):** Short TTL (e.g., 30s) to prevent "stale refusals" after KnowledgeBase updates.
+- **Stability:** Redis failures are logged as warnings; the system automatically falls back to DB+LLM without breaking the user request.
 
 ### 4. Minimal Retrieval Baseline (Top-K)
 - Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)
@@ -335,14 +336,6 @@ volumes:
   redis_data:
 ```
 
----
-
-## Operational Notes
-
-- **Fail-fast refusal:** if `hits == 0`, return refusal without calling LLM (cost/latency saving, groundedness)
-- **Cache degradation:** Redis issues should not break the main request path (fallback to retrieval + LLM)
-- **Cache TTL:** keep TTL configurable; avoid long caching for `hits==0` refusal to prevent stale behavior after KB updates
-- **Default dev mode:** H2 in-memory is for rapid iteration; use `prod` profile for persistence + caching simulation
 
 ---
 
