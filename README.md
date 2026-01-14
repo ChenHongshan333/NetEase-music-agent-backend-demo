@@ -282,7 +282,8 @@ docker stop csagent-redis
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 docker start csagent-redis
 ```
-Expected results: the API still returns normally; cache logs show miss and Redis errors are swallowed **(warn only)**.
+Expected results: 
+the API still returns normally; cache logs show miss and Redis errors are swallowed **(warn only)**.
 
 ---
 
