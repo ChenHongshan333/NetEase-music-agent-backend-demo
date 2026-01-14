@@ -21,6 +21,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
 @RestController
 @RequestMapping("/api/agent")
 public class AgentController {
@@ -30,6 +34,8 @@ public class AgentController {
     private final RedisCacheService cache;
     private final CacheProperties cacheProps;
     private final ObjectMapper objectMapper;
+    private static final Logger log = LoggerFactory.getLogger(AgentController.class);
+
 
     public AgentController(
             KnowledgeBaseService knowledgeBaseService,
@@ -53,6 +59,7 @@ public class AgentController {
         }
 
         String q = question.trim();
+        log.info("[chat] q='{}' cacheEnabled={}", q, cacheProps.isEnabled());
         String cacheKey = buildCacheKey(q);
 
         // 1) Cache lookup (hit -> return immediately)
@@ -62,11 +69,14 @@ public class AgentController {
                 try {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> resp = objectMapper.readValue(cached.get(), Map.class);
+                    log.info("[chat] cache=HIT key={}", cacheKey);
                     return resp;
                 } catch (Exception ignored) {
+
                     // 解析失败视为 cache miss，继续走主链路
                 }
             }
+            log.info("[chat] cache=MISS key={}", cacheKey);
         }
 
         // 2) Retrieval
@@ -80,6 +90,7 @@ public class AgentController {
 
             // refusal cache: very short TTL (optional)
             writeCacheSafely(cacheKey, resp, cacheProps.getRefusalTtlSeconds());
+            log.info("[chat] cache=REFUSAL key={}", cacheKey);
             return resp;
         }
 
@@ -99,8 +110,9 @@ public class AgentController {
             known.append("[").append(i + 1).append("] ").append(ans).append("\n");
         }
         known.append("用户问题：").append(q);
-
+        
         // 5) LLM inference
+        log.info("[chat] retrieval hits={} llm=CALL", hits.size());
         String answer = dashScopeClient.call(systemMsg, known.toString());
 
         // 6) Response
@@ -109,7 +121,7 @@ public class AgentController {
         resp.put("hits", hits.size());
 
         // 7) Write-back cache with normal TTL
-        writeCacheSafely(cacheKey, resp, cacheProps.getTtlSeconds());
+        writeCacheSafely(cacheKey, resp, cacheProps.getTtlSeconds()); 
         return resp;
     }
 
@@ -143,6 +155,7 @@ public class AgentController {
 
         try {
             String json = objectMapper.writeValueAsString(resp);
+            log.info("[chat] cache=WRITE key={} ttl={}s", key, ttlSeconds);
             cache.set(key, json, ttlSeconds);
         } catch (Exception ignored) {
             // ignore all to keep main flow stable
