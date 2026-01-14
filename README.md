@@ -61,7 +61,7 @@ This project demonstrates a minimal RAG pipeline with production-minded engineer
 4. Refusal gate: if `hits == 0`, return refusal (no LLM)
 5. Prompt assembly: inject Known Info
 6. LLM inference (DashScope OpenAI-compatible endpoint)
-7. Write-back to Redis with TTL (Write-back to Redis with TTL (Short TTL for refusals to prevent cache penetration))
+7. Write-back to Redis with TTL (Short TTL for refusals to avoid stale refusals)
 
 ```mermaid
 flowchart LR
@@ -215,12 +215,11 @@ agent.cache.refusal-ttl-seconds=30
 ### 1. Rapid Development (Default: H2)
 Zero infrastructure required.
 
-If you have Maven environment done on your PC (Win/ macOS/ Linux):
 ```bash
-mvn spring-boot:run
-```
-If not, try Maven Wrapper:
-```bash
+# Windows
+.\mvnw.cmd spring-boot:run
+
+# macOS / Linux
 ./mvnw spring-boot:run
 ```
 
@@ -272,10 +271,10 @@ docker ps
 
 4) Verification (3 requests)
 ```bash
-# Windows Powershell users may need to use 'curl.exe' instead of 'curl'
-curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
+# macOS / Linux users may need to use 'curl' instead of 'curl.exe'
+curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
+curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
+curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
 ```
 Expected log patterns:
 - 1st request: `cache=MISS` → `llm=CALL` → `cache=WRITE`
