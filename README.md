@@ -30,21 +30,21 @@ This project demonstrates a minimal RAG pipeline with production-minded engineer
 
 ## Key Features
 
-### 1) Strict Grounding Policy (Fail-Fast)
+### 1. Strict Grounding Policy (Fail-Fast)
 - **Hit = 0:** return fixed refusal immediately (**no LLM call**)
 - **Hit > 0:** inject “Known Info” and answer **only** based on retrieved context
 
-### 2) Dual-Profile Support (Dev vs Prod Simulation)
+### 2. Dual-Profile Support (Dev vs Prod Simulation)
 - **dev (default):** H2 in-memory, zero infrastructure required
 - **prod:** MySQL persistence + Redis caching (Docker Compose), closer to real-world deployment
 
-### 3) Redis Caching (Hot Query Optimization)
+### 3. Redis Caching (Hot Query Optimization)
 - Cache-first: check Redis before retrieval/LLM
 - TTL-based write-back on cache miss
 - **Stability:** Redis failures degrade gracefully (cache layer does not break the main request path)
 - **Correctness note:** refusal responses (`hits==0`) should not be cached for long to avoid stale refusal after KB updates
 
-### 4) Minimal Retrieval Baseline (Top-K)
+### 4. Minimal Retrieval Baseline (Top-K)
 - Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)
 - Optional query normalization + retry to improve recall on noisy inputs
 
@@ -137,6 +137,7 @@ Behavior:
 | --- | --- | --- |
 | Language | Java 17 | Core development language |
 | Framework | Spring Boot | Web MVC and dependency injection |
+| ORM | Spring Data JPA | Repository abstraction over DB |
 | Database (dev) | H2 | Zero-infra rapid development |
 | Database (prod) | MySQL 8 | Persistence for production simulation |
 | Cache (prod) | Redis 7 | Hot query caching with TTL |
@@ -208,7 +209,7 @@ agent.cache.refusal-ttl-seconds=30
 
 ## Getting Started
 
-### 1) Rapid Development (Default: H2)
+### 1. Rapid Development (Default: H2)
 Zero infrastructure required.
 
 If you have Maven environment done on your PC (Win/ macOS/ Linux):
@@ -240,15 +241,15 @@ Quick test:
 curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 ```
 
-### 2) Production Simulation (Docker: MySQL + Redis)
+### 2. Production Simulation (Docker: MySQL + Redis)
 
-1. Start infrastructure:
+1) Start infrastructure:
 ```bash
 docker compose up -d
 docker ps
 ```
 
-2. Run with prod profile:
+2) Run with prod profile:
 
 ```bash
 # Windows (Powershell)
@@ -258,7 +259,7 @@ docker ps
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
-3. Cache behavior
+3) Cache behavior
 - Cache **hit** returns immediately (no LLM call).
 - Cache **miss** triggers retrieval; `hits==0` refuses without calling LLM.
 - Cache write-back uses TTL:
@@ -266,18 +267,19 @@ docker ps
   - refusal: `agent.cache.refusal-ttl-seconds` (short TTL to avoid long-term refusal)
 - Redis failures **do not break** the main flow (degrade to cache miss).
 
-4. Verification (3 requests)
+4) Verification (3 requests)
 ```bash
-curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
+# Windows Powershell users may need to use 'curl.exe' instead of 'curl'
+curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
+curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
+curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
 ```
 Expected log patterns:
 - 1st request: `cache=MISS` → `llm=CALL` → `cache=WRITE`
 - 2nd request: `cache=HIT` (no `llm=CALL`)
 - 3rd request: `cache=MISS` → `gate=REFUSAL hits=0 llm=SKIP`
 
-5. Degradation drill (Redis down)
+5) Degradation drill (Redis down)
 ```bash
 docker stop csagent-redis
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
