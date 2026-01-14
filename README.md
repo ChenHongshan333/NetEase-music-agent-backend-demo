@@ -355,6 +355,18 @@ volumes:
   redis_data:
 ```
 
+---
+
+## AI-Assisted Development (Vibe Coding)
+
+This project was developed with AI assistance using **Cursor** (model: **GPT-5.2**), utilizing a "Human-in-the-Loop" workflow:
+
+- **Scaffolding & Drafting:** Rapid generation of Spring Boot boilerplate and configuration wiring.
+- **Documentation & Visualization:** Iterative refinement of the README and Mermaid architecture diagrams.
+- **Debugging Support:** Analyzing stack traces and resolving dependency conflicts.
+
+**Verification:**
+All AI-assisted changes were **manually reviewed and adjusted**. Key engineering patterns (cache degradation strategies and dev/prod profile isolation) were validated through reproducible drills (cache hit/miss logs, Redis-down degradation drill).
 
 ---
 
