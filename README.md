@@ -16,15 +16,22 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 ## Table of Contents
 - [Security](#security)
 - [Key Features](#key-features)
-- [Configuration](#configuration)
-- [Getting Started](#getting-started)
+- [Install](#install)
+  - [Prerequisites](#prerequisites)
+  - [Set Environment Variable (DashScope)](#set-environment-variable-dashscope)
+- [Usage](#usage)
   - [1. Rapid Development (Default: H2)](#1-rapid-development-default-h2)
   - [2. Production Simulation (Docker: MySQL + Redis)](#2-production-simulation-docker-mysql--redis)
   - [Degradation Drill (Redis Down)](#degradation-drill-redis-down)
+- [Configuration](#configuration)
+  - [Spring Profiles](#spring-profiles)
 - [API Reference](#api-reference)
-- [Repository Structure](#repository-structure)
+  - [Chat Interface](#chat-interface)
+- [Architecture](#architecture)
+  - [Data Flow (Fail-Fast + Cache + RAG)](#data-flow-fail-fast--cache--rag)
+  - [Repository Structure](#repository-structure)
 - [Docker Compose Reference](#docker-compose-reference)
-- [AI-Assisted Development (Short Note)](#ai-assisted-development-short-note)
+- [AI-Assisted Development (Vibe Coding)](#ai-assisted-development-vibe-coding)
 - [License](#license)
 - [Author](#author)
 
@@ -45,54 +52,37 @@ This service enforces a **grounded-only** answering policy:
 
 ---
 
-## Configuration
+## Install
 
-### Environment Variables
-* `DASHSCOPE_API_KEY` (required)
+### Prerequisites
+**Required**
+- **JDK 17** (Java 17)
+- **Git** (to clone the repo)
+- **DashScope API Key** (set as environment variable `DASHSCOPE_API_KEY`)
+
+**Optional (recommended for prod simulation)**
+- **Docker Desktop** (to run **MySQL + Redis** via `docker compose`)
+
+> Good news: this repo uses **Maven Wrapper** (`mvnw`), so you **don’t need to install Maven** separately.
+
+### Set Environment Variable (DashScope)
 
 ```bash
-# macOS / Linux
-export DASHSCOPE_API_KEY="your_api_key_here"
-
-# Windows (PowerShell)
+# Windows (Powershell)
 setx DASHSCOPE_API_KEY "your_api_key_here"
+
+# Restart terminal after setx, then verify:
+echo $env:DASHSCOPE_API_KEY
+
+
+# macOS / Linux (bash/zsh)
+export DASHSCOPE_API_KEY="your_api_key_here"
+echo $DASHSCOPE_API_KEY
 ```
 
-### Spring Profiles
-Use `dev` by default and switch to `prod` when running with Docker.
-
-**application.properties**
-```properties
-spring.profiles.default=dev
-```
-
-**application-dev.properties** (H2; example)
-```properties
-spring.datasource.url=jdbc:h2:mem:testdb
-spring.datasource.driver-class-name=org.h2.Driver
-spring.jpa.hibernate.ddl-auto=update
-```
-
-**application-prod.properties** (MySQL + Redis; example)
-```properties
-# MySQL (prod)
-spring.datasource.url=jdbc:mysql://localhost:3306/cs_agent?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Singapore
-spring.datasource.username=cs
-spring.datasource.password=cs_pass
-spring.jpa.hibernate.ddl-auto=update
-
-# Redis (prod)
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-
-# Cache policy
-agent.cache.enabled=true
-agent.cache.ttl-seconds=600
-agent.cache.refusal-ttl-seconds=30
-```
 ---
 
-## Getting Started
+## Usage
 
 > Note (Windows): In **PowerShell**, `curl` may be an alias of `Invoke-WebRequest`.  
 > If the commands below fail, use **`curl.exe`** instead (or run in CMD/Git Bash).
@@ -203,6 +193,42 @@ docker start csagent-redis
 
 ---
 
+## Configuration
+
+### Spring Profiles
+Use `dev` by default and switch to `prod` when running with Docker.
+
+**application.properties**
+```properties
+spring.profiles.default=dev
+```
+
+**application-dev.properties** (H2; example)
+```properties
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.driver-class-name=org.h2.Driver
+spring.jpa.hibernate.ddl-auto=update
+```
+
+**application-prod.properties** (MySQL + Redis; example)
+```properties
+# MySQL (prod)
+spring.datasource.url=jdbc:mysql://localhost:3306/cs_agent?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Singapore
+spring.datasource.username=cs
+spring.datasource.password=cs_pass
+spring.jpa.hibernate.ddl-auto=update
+
+# Redis (prod)
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
+
+# Cache policy
+agent.cache.enabled=true
+agent.cache.ttl-seconds=600
+agent.cache.refusal-ttl-seconds=30
+```
+---
+
 ## API Reference
 
 ### Chat Interface
@@ -226,14 +252,64 @@ curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么
 * `hits > 0` → LLM-generated answer grounded on Known Info
 
 ---
+## Architecture
 
-## Repository Structure
+### Data Flow (Fail-Fast + Cache + RAG)
 
-- `controller/AgentController.java` — request entry, response shaping
-- `service/KnowledgeBaseService.java` — retrieval + normalization retry
-- `repo/KnowledgeBaseRepository.java` — JPA query layer
-- `entity/KnowledgeBase.java` — KnowledgeBase schema
-- `service/ai/DashScopeClient.java` — LLM client (OpenAI-compatible protocol)
+1. Input normalization (trim / simple cleanup)
+2. Redis cache lookup (hot query optimization)
+3. Top-K retrieval from KnowledgeBase (K=5)
+4. Refusal gate: if `hits == 0`, return refusal (no LLM)
+5. Prompt assembly: inject Known Info
+6. LLM inference (DashScope OpenAI-compatible endpoint)
+7. Write-back to Redis with TTL (Short TTL for refusals to avoid stale refusals)
+
+```mermaid
+flowchart LR
+  U[User Question] --> C[AgentController]
+  C --> KV{Redis Cache}
+
+  %% Read Path: Cache Hit
+  KV -- Hit --> H[Return Cached JSON]
+  H -.->|Could be Refusal or Answer| C
+
+  %% Write Path: Cache Miss -> Split Logic
+  KV -- Miss --> R[Top-K Retrieval]
+
+  %% Branch 1: No Knowledge (Refusal)
+  R -- Hits=0 --> Z[Refusal Msg]
+  Z -- "Write: Short TTL (30s)" --> W1[Redis: Short-lived refusal cache]
+  W1 --> KV
+  Z --> C
+
+  %% Branch 2: Knowledge Found (Answer)
+  R -- Hits>0 --> P[Build Prompt]
+  P --> L[DashScope Chat]
+  L -- "Write: Long TTL (10m)" --> W2[Redis: Standard Cache]
+  W2 --> KV
+  L --> C
+
+  C --> U
+
+```
+
+### Repository Structure
+
+Key source files map to the architecture above:
+
+```text
+src/main/java/com/example/csagent
+├── controller
+│   └── AgentController.java       # API Entry point (REST)
+├── service
+│   ├── KnowledgeBaseService.java  # Core Logic: Retrieval + RAG orchestration
+│   └── ai
+│       └── DashScopeClient.java   # LLM Integration (OpenAI-compatible)
+├── repository
+│   └── KnowledgeBaseRepository.java # DB Layer (JPA)
+└── entity
+    └── KnowledgeBase.java         # Data Schema
+```
 
 ---
 
