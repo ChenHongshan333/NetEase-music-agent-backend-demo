@@ -44,12 +44,11 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 ---
 
 ## Key Features
-This service enforces a **grounded-only** answering policy:
-
-- If retrieval returns **no hit** (`hits == 0`), it returns a fixed refusal message **without invoking the LLM** (fail-fast).
-- If `hits > 0`, it injects retrieved KnowledgeBase entries as **Known Info** and constrains the LLM to answer **only** from that context.
-- Redis caching is **cache-first** and **non-blocking** (Redis errors warn + fallback to DB/LLM).
-
+- Strict Grounding Policy (Fail-Fast)
+- Dual-Profile Support (Dev vs Prod Simulation)
+- Redis Caching (Hot Query Optimization)
+- Minimal Retrieval Baseline (Top-K)
+  
 ---
 
 ## Install
