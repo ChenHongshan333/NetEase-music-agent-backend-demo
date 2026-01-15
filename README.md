@@ -7,163 +7,49 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-blue)
 ![License](https://img.shields.io/badge/License-MIT-grey)
 
-A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume customer support scenarios.
+A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume customer support scenarios, with **production-minded engineering** (profiles, Docker infra, caching, and degradation drills).
 
-This service enforces a **grounded-only** answering policy:
-- If retrieval returns **no hit** (`hits == 0`), it returns a fixed refusal message **without invoking the LLM** (fail-fast).
-- If `hits > 0`, it injects retrieved KnowledgeBase entries as **Known Info** and constrains the LLM to answer **only** from that context.
+**Project Page (full write-up, avoids README duplication):** - If you enabled GitHub Pages from `/docs`: `https://chenhongshan333.github.io/Netease-music-agent-backend-demo/`  
+- Or put your actual Project Page URL here: `<YOUR_PROJECT_PAGE_URL>`
 
 ---
 
-## Project Background
+## Table of Contents
+- [Security](#security)
+- [Key Features](#key-features)
+- [Configuration](#configuration)
+- [Getting Started](#getting-started)
+  - [1. Rapid Development (Default: H2)](#1-rapid-development-default-h2)
+  - [2. Production Simulation (Docker: MySQL + Redis)](#2-production-simulation-docker-mysql--redis)
+  - [Degradation Drill (Redis Down)](#degradation-drill-redis-down)
+- [API Reference](#api-reference)
+- [Repository Structure](#repository-structure)
+- [Docker Compose Reference](#docker-compose-reference)
+- [AI-Assisted Development (Short Note)](#ai-assisted-development-short-note)
+- [License](#license)
+- [Author](#author)
 
-Customer support queries in music streaming apps (e.g., membership renewal, pricing) are repetitive and high-volume.  
-This project demonstrates a minimal RAG pipeline with production-minded engineering choices:
+---
 
-- **Predictable control flow:** synchronous end-to-end pipeline for stability
-- **Hallucination containment:** refusal gate when retrieval has no hit
-- **Performance optimization:** Redis caching for hot queries (with TTL and graceful degradation)
-- **Environment separation:** H2 (dev) vs MySQL + Redis (prod simulation) via Spring Profiles
-- **Vendor-agnostic LLM integration:** OpenAI-compatible protocol (DashScope/Qwen by default)
+## Security
+- **Never commit API keys.** Use env var `DASHSCOPE_API_KEY`.
+- If you use `.env`, make sure it’s in `.gitignore`.
 
 ---
 
 ## Key Features
+This service enforces a **grounded-only** answering policy:
 
-### 1. Strict Grounding Policy (Fail-Fast)
-- **Hit = 0:** return fixed refusal immediately (**no LLM call**)
-- **Hit > 0:** inject “Known Info” and answer **only** based on retrieved context
-
-### 2. Dual-Profile Support (Dev vs Prod Simulation)
-- **dev (default):** H2 in-memory, zero infrastructure required
-- **prod:** MySQL persistence + Redis caching (Docker Compose), closer to real-world deployment
-
-### 3) Redis Caching (Hot Query Optimization)
-- **Cache-First Strategy:** Checks Redis before triggering retrieval or LLM inference to reduce latency and token costs.
-- **Smart TTL:**
-  - **Standard Answer:** Long TTL (e.g., 10 min) for high cache hit rate.
-  - **Refusal (Hits=0):** Short TTL (e.g., 30s) to prevent "stale refusals" after KnowledgeBase updates.
-- **Stability:** Redis failures are logged as warnings; the system automatically falls back to DB+LLM without breaking the user request.
-
-### 4. Minimal Retrieval Baseline (Top-K)
-- Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)
-- Optional query normalization + retry to improve recall on noisy inputs
-
----
-
-## Architecture
-
-### Data Flow (Fail-Fast + Cache + RAG)
-
-1. Input normalization (trim / simple cleanup)
-2. Redis cache lookup (hot query optimization)
-3. Top-K retrieval from KnowledgeBase (K=5)
-4. Refusal gate: if `hits == 0`, return refusal (no LLM)
-5. Prompt assembly: inject Known Info
-6. LLM inference (DashScope OpenAI-compatible endpoint)
-7. Write-back to Redis with TTL (Short TTL for refusals to avoid stale refusals)
-
-```mermaid
-flowchart LR
-  U[User Question] --> C[AgentController]
-  C --> KV{Redis Cache}
-
-  %% Read Path: Cache Hit
-  KV -- Hit --> H[Return Cached JSON]
-  H -.->|Could be Refusal or Answer| C
-
-  %% Write Path: Cache Miss -> Split Logic
-  KV -- Miss --> R[Top-K Retrieval]
-
-  %% Branch 1: No Knowledge (Refusal)
-  R -- Hits=0 --> Z[Refusal Msg]
-  Z -- "Write: Short TTL (30s)" --> W1[Redis: Short-lived refusal cache]
-  W1 --> KV
-  Z --> C
-
-  %% Branch 2: Knowledge Found (Answer)
-  R -- Hits>0 --> P[Build Prompt]
-  P --> L[DashScope Chat]
-  L -- "Write: Long TTL (10m)" --> W2[Redis: Standard Cache]
-  W2 --> KV
-  L --> C
-
-  C --> U
-
-```
----
-
-## Prompt Policy (Grounded Answering)
-
-The system uses a rigid template to prevent the LLM from using external knowledge.
-
-```text
-[System Role]
-Persona: NetEase Cloud Music customer support agent
-Constraint: Answer ONLY using the provided "Known Info".
-Failure Case: If the info is insufficient, reply exactly:
-"抱歉，小云暂时还没学会这个问题"
-No fabrication allowed.
-
-[User Role]
-Known Info:
-[1] <retrieved_answer_1>
-[2] <retrieved_answer_2>
-...
-User Question: <question>
-```
-
----
-
-## API Reference
-
-### Chat Interface
-`GET /api/agent/chat?question=...`
-
-Response:
-```json
-{
-  "answer": "....",
-  "hits": 2
-}
-```
-
-Behavior:
-- `hits = 0` → fixed refusal (no LLM call)
-- `hits > 0` → LLM-generated answer grounded on Known Info
-
----
-
-## Tech Stack
-
-| Component | Choice | Description |
-| --- | --- | --- |
-| Language | Java 17 | Core development language |
-| Framework | Spring Boot | Web MVC and dependency injection |
-| ORM | Spring Data JPA | Repository abstraction over DB |
-| Database (dev) | H2 | Zero-infra rapid development |
-| Database (prod) | MySQL 8 | Persistence for production simulation |
-| Cache (prod) | Redis 7 | Hot query caching with TTL |
-| LLM Integration | OkHttp + Jackson | OpenAI-compatible chat completion client |
-| API Docs | OpenAPI / Swagger UI | API exploration and testing |
-| Deployment | Docker Compose | One-command infra startup |
-
----
-
-## Repository Structure
-
-- `controller/AgentController.java` — request entry, response shaping
-- `service/KnowledgeBaseService.java` — retrieval + normalization retry
-- `repo/KnowledgeBaseRepository.java` — JPA query layer
-- `entity/KnowledgeBase.java` — KnowledgeBase schema
-- `service/ai/DashScopeClient.java` — LLM client (OpenAI-compatible protocol)
+- If retrieval returns **no hit** (`hits == 0`), it returns a fixed refusal message **without invoking the LLM** (fail-fast).
+- If `hits > 0`, it injects retrieved KnowledgeBase entries as **Known Info** and constrains the LLM to answer **only** from that context.
+- Redis caching is **cache-first** and **non-blocking** (Redis errors warn + fallback to DB/LLM).
 
 ---
 
 ## Configuration
 
 ### Environment Variables
-- `DASHSCOPE_API_KEY` (required)
+* `DASHSCOPE_API_KEY` (required)
 
 ```bash
 # macOS / Linux
@@ -181,38 +67,35 @@ Use `dev` by default and switch to `prod` when running with Docker.
 spring.profiles.default=dev
 ```
 
-**application-dev.properties** (H2; keep your existing settings)
+**application-dev.properties** (H2; example)
 ```properties
-# H2 Config (example)
 spring.datasource.url=jdbc:h2:mem:testdb
 spring.datasource.driver-class-name=org.h2.Driver
 spring.jpa.hibernate.ddl-auto=update
 ```
 
-**application-prod.properties** (MySQL + Redis)
+**application-prod.properties** (MySQL + Redis; example)
 ```properties
 # MySQL (prod)
 spring.datasource.url=jdbc:mysql://localhost:3306/cs_agent?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Singapore
 spring.datasource.username=cs
 spring.datasource.password=cs_pass
-spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 spring.jpa.hibernate.ddl-auto=update
 
 # Redis (prod)
 spring.data.redis.host=localhost
 spring.data.redis.port=6379
 
-# Cache (prod)
+# Cache policy
 agent.cache.enabled=true
 agent.cache.ttl-seconds=600
 agent.cache.refusal-ttl-seconds=30
 ```
-
 ---
 
 ## Getting Started
 
-> Note (Windows): In **PowerShell**, `curl` may be an alias of `Invoke-WebRequest`.
+> Note (Windows): In **PowerShell**, `curl` may be an alias of `Invoke-WebRequest`.  
 > If the commands below fail, use **`curl.exe`** instead (or run in CMD/Git Bash).
 
 ### 1. Rapid Development (Default: H2)
@@ -226,13 +109,14 @@ Zero infrastructure required.
 ./mvnw spring-boot:run
 ```
 
-After startup:
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-- H2 Console: `http://localhost:8080/h2`
+**After startup:**
 
-Seed a few KnowledgeBase entries via Swagger UI to reproduce retrieval hits.
+* **Swagger UI:** `http://localhost:8080/swagger-ui/index.html`
+* **H2 Console:** `http://localhost:8080/h2`
 
-Example KnowledgeBase payload:
+Seed a few KnowledgeBase entries via Swagger UI to reproduce retrieval hits.  
+**Example KnowledgeBase payload:**
+
 ```json
 {
   "question": "怎么取消会员自动续费",
@@ -241,61 +125,67 @@ Example KnowledgeBase payload:
 }
 ```
 
-Quick test:
+**Quick test:**
+
 ```bash
 # Standard
 curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 
-# Powershell fallback
+# PowerShell fallback
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 ```
 
 ### 2. Production Simulation (Docker: MySQL + Redis)
 
-1) Start infrastructure:
+#### 2.1 Start infrastructure
+If you already have `docker-compose.yml` in repo root, just run:
+
 ```bash
 docker compose up -d
 docker ps
 ```
 
-2) Run with prod profile:
+You should see containers like:
+* `csagent-mysql`
+* `csagent-redis`
+
+**After startup:**
+
+* **Swagger UI:** `http://localhost:8080/swagger-ui/index.html`
+* **H2 Console:** `http://localhost:8080/h2`
+
+#### 2.2 Run with prod profile
 
 ```bash
-# Windows (Powershell)
+# Windows (PowerShell)
 .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=prod
 
 # macOS / Linux
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
-3) Cache behavior
-- Cache **hit** returns immediately (no LLM call).
-- Cache **miss** triggers retrieval; `hits==0` refuses without calling LLM.
-- Cache write-back uses TTL:
-  - normal answer: `agent.cache.ttl-seconds`
-  - refusal: `agent.cache.refusal-ttl-seconds` (short TTL to avoid long-term refusal)
-- Redis failures **do not break** the main flow (degrade to cache miss).
-
-4) Verification (3 requests)
+#### 2.3 Verify (cache + refusal gate)
+1.  Seed KnowledgeBase (same as dev).
+2.  Call the same question multiple times:
 
 ```bash
 # Standard
 curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
 
 # PowerShell fallback
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
-curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=火星移民怎么报名"
 ```
 
-Expected log patterns:
-- 1st request: `cache=MISS` → `llm=CALL` → `cache=WRITE`
-- 2nd request: `cache=HIT` (no `llm=CALL`)
-- 3rd request: `cache=MISS` → `gate=REFUSAL hits=0 llm=SKIP`
+**Expected log patterns (typical):**
+* **1st request:** `cache=MISS` → `llm=CALL` → `cache=WRITE`
+* **2nd request:** `cache=HIT` (no `llm=CALL`)
+* **If you ask an unknown question:** `cache=MISS` → `gate=REFUSAL` `hits=0` `llm=SKIP` (and refusal cached with short TTL)
 
-5) Degradation drill (Redis down)
+### Degradation Drill (Redis Down)
+Goal: prove Redis failure does not break the main request flow.
+
 ```bash
 # Standard
 docker stop csagent-redis
@@ -307,14 +197,49 @@ docker stop csagent-redis
 curl.exe -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
 docker start csagent-redis
 ```
-Expected results: 
-the API still returns normally; cache logs show miss and Redis errors are swallowed **(warn only)**.
+
+**Expected results:**
+* API still returns normally.
+* Logs show cache miss + Redis error swallowed (warn only), then fallback to DB/LLM path.
 
 ---
 
-## Docker Compose (Reference)
+## API Reference
 
-Create `docker-compose.yml` in project root:
+### Chat Interface
+`GET /api/agent/chat?question=...`
+
+**Example:**
+```bash
+curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么取消自动续费"
+```
+
+**Response:**
+```json
+{
+  "answer": "进入 App【个人中心】->【会员中心】->【管理续费】-> 选择订阅并取消。",
+  "hits": 2
+}
+```
+
+**Behavior:**
+* `hits = 0` → fixed refusal (no LLM call)
+* `hits > 0` → LLM-generated answer grounded on Known Info
+
+---
+
+## Repository Structure
+
+- `controller/AgentController.java` — request entry, response shaping
+- `service/KnowledgeBaseService.java` — retrieval + normalization retry
+- `repo/KnowledgeBaseRepository.java` — JPA query layer
+- `entity/KnowledgeBase.java` — KnowledgeBase schema
+- `service/ai/DashScopeClient.java` — LLM client (OpenAI-compatible protocol)
+
+---
+
+## Docker Compose Reference
+If you don’t already have it, create `docker-compose.yml` in project root:
 
 ```yaml
 services:
@@ -332,14 +257,15 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_pass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot_pass"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 30
 
   redis:
     image: redis:7-alpine
     container_name: csagent-redis
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
     volumes:
@@ -355,44 +281,26 @@ volumes:
   redis_data:
 ```
 
+**Tip (Windows):** if you don’t have `redis-cli` locally, run it inside the container:
+```bash
+docker exec -it csagent-redis redis-cli
+# then you can run: FLUSHDB
+```
+
 ---
 
 ## AI-Assisted Development (Vibe Coding)
+Built with AI assistance using **Cursor** (model: GPT-5.2) in a human-in-the-loop workflow:
+- scaffolding Spring Boot wiring
+- iterating docs/diagrams
+- debugging traces and dependency issues
 
-This project was developed with AI assistance using **Cursor** (model: **GPT-5.2**), utilizing a "Human-in-the-Loop" workflow:
-
-- **Scaffolding & Drafting:** Rapid generation of Spring Boot boilerplate and configuration wiring.
-- **Documentation & Visualization:** Iterative refinement of the README and Mermaid architecture diagrams.
-- **Debugging Support:** Analyzing stack traces and resolving dependency conflicts.
-
-**Verification:**
-All AI-assisted changes were **manually reviewed and adjusted**. Key engineering patterns (cache degradation strategies and dev/prod profile isolation) were validated through reproducible drills (cache hit/miss logs, Redis-down degradation drill).
+All changes were manually reviewed and verified via reproducible drills (cache hit/miss + Redis-down degradation).
 
 ---
-
-## Screenshots
-
-Here are some real screenshots under `docs/` to improve scanability and reproducibility:
-
-- `docs/swagger.png` — Swagger UI (endpoint visible)
-- `docs/response.png` — Example API response (`answer` + `hits`)
-- `docs/cache-logs.png` — Cache proof logs (MISS → LLM CALL → WRITE, then HIT with no LLM)
-
-**Swagger UI**
-![Swagger UI](docs/swagger.png)
-
-**Example Response**
-![Response](docs/response.png)
-
-**Cache Hit/Miss Logs (Proof)**
-![Cache Logs](docs/cache-logs.png)
-
----
-
 ## License
 MIT
 
 ---
-
 ## Author
 Chen Hongshan
