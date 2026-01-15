@@ -180,9 +180,59 @@
 
 
     <!-- ===================== -->
-    <!-- Architecture (GRAY)   -->
+    <!-- Key Features (GRAY)   -->
     <!-- ===================== -->
-    <section class="section hero is-light pp-wide" id="architecture">
+    <section class="section hero is-light pp-wide" id="key-features">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Key Features</h2>
+
+        <div class="content has-text-justified pp-body">
+
+          <h3 class="title is-4">Strict Grounding Policy (Fail-Fast)</h3>
+          <ul>
+            <li><strong>Hit = 0:</strong> return fixed refusal immediately (<strong>no LLM call</strong>)</li>
+            <li><strong>Hit &gt; 0:</strong> inject "Known Info" and answer <strong>only</strong> based on retrieved
+              context</li>
+          </ul>
+
+          <h3 class="title is-4">Dual-Profile Support (Dev vs Prod Simulation)</h3>
+          <ul>
+            <li><strong>dev (default):</strong> H2 in-memory, zero infrastructure required</li>
+            <li><strong>prod:</strong> MySQL persistence + Redis caching (Docker Compose), closer to real-world
+              deployment</li>
+          </ul>
+
+          <h3 class="title is-4">Redis Caching (Hot Query Optimization)</h3>
+          <ul>
+            <li><strong>Cache-First Strategy:</strong> Checks Redis before triggering retrieval or LLM inference to
+              reduce latency and token costs.</li>
+            <li><strong>Smart TTL:</strong>
+              <ul>
+                <li><strong>Standard Answer:</strong> Long TTL (e.g., 10 min) for high cache hit rate.</li>
+                <li><strong>Refusal (Hits=0):</strong> Short TTL (e.g., 30s) to prevent "stale refusals" after
+                  KnowledgeBase updates.</li>
+              </ul>
+            </li>
+            <li><strong>Stability:</strong> Redis failures are logged as warnings; the ...tically falls back to
+              DB+LLM without breaking the user request.</li>
+          </ul>
+
+          <h3 class="title is-4">Minimal Retrieval Baseline (Top-K)</h3>
+          <ul>
+            <li>Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)</li>
+            <li>Optional query normalization + retry to improve recall on noisy inputs</li>
+          </ul>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ===================== -->
+    <!-- Architecture (WHITE)  -->
+    <!-- ===================== -->
+    <section class="section hero alt-white pp-wide" id="architecture">
       <div class="container is-max-desktop">
         <h2 class="title is-3">Architecture</h2>
 
@@ -250,57 +300,6 @@ flowchart LR
     <div id="mermaid-overlay" class="mermaid-overlay is-hidden">
       <div class="mermaid-overlay-inner"></div>
     </div>
-
-
-    
-    <!-- ===================== -->
-    <!-- Key Features (WHITE)  -->
-    <!-- ===================== -->
-    <section class="section hero alt-white pp-wide" id="key-features">
-      <div class="container is-max-desktop">
-        <h2 class="title is-3">Key Features</h2>
-
-        <div class="content has-text-justified pp-body">
-
-          <h3 class="title is-4">Strict Grounding Policy (Fail-Fast)</h3>
-          <ul>
-            <li><strong>Hit = 0:</strong> return fixed refusal immediately (<strong>no LLM call</strong>)</li>
-            <li><strong>Hit &gt; 0:</strong> inject "Known Info" and answer <strong>only</strong> based on retrieved
-              context</li>
-          </ul>
-
-          <h3 class="title is-4">Dual-Profile Support (Dev vs Prod Simulation)</h3>
-          <ul>
-            <li><strong>dev (default):</strong> H2 in-memory, zero infrastructure required</li>
-            <li><strong>prod:</strong> MySQL persistence + Redis caching (Docker Compose), closer to real-world
-              deployment</li>
-          </ul>
-
-          <h3 class="title is-4">Redis Caching (Hot Query Optimization)</h3>
-          <ul>
-            <li><strong>Cache-First Strategy:</strong> Checks Redis before triggering retrieval or LLM inference to
-              reduce latency and token costs.</li>
-            <li><strong>Smart TTL:</strong>
-              <ul>
-                <li><strong>Standard Answer:</strong> Long TTL (e.g., 10 min) for high cache hit rate.</li>
-                <li><strong>Refusal (Hits=0):</strong> Short TTL (e.g., 30s) to prevent "stale refusals" after
-                  KnowledgeBase updates.</li>
-              </ul>
-            </li>
-            <li><strong>Stability:</strong> Redis failures are logged as warnings; the ...tically falls back to
-              DB+LLM without breaking the user request.</li>
-          </ul>
-
-          <h3 class="title is-4">Minimal Retrieval Baseline (Top-K)</h3>
-          <ul>
-            <li>Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)</li>
-            <li>Optional query normalization + retry to improve recall on noisy inputs</li>
-          </ul>
-
-        </div>
-
-      </div>
-    </section>
 
 
     <!-- Image carousel -->
