@@ -13,10 +13,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @EnableConfigurationProperties(CacheProperties.class)
 public class CsAgentServiceApplication {
 
-	/**
-	 * 兜底提供 Spring 管理的 ObjectMapper（用于 DashScopeClient 严格复用 Jackson 解析）。
-	 * 你的依赖当前使用 spring-boot-starter-webmvc，可能不会自动装配 ObjectMapper。
-	 */
+
 	@Bean
 	public ObjectMapper objectMapper() {
 		return JsonMapper.builder()

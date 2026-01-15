@@ -1,0 +1,1234 @@
+/* Modern CSS Variables for consistent theming */
+:root {
+  --primary-color: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary-color: #64748b;
+  --accent-color: #0ea5e9;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-light: #94a3b8;
+  --background-primary: #ffffff;
+  --background-secondary: #f8fafc;
+  --background-accent: #f1f5f9;
+  --border-color: #e2e8f0;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --gradient-subtle: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  --border-radius: 12px;
+  --border-radius-lg: 16px;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth scrolling for better UX */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-size: 16px;
+  background-color: var(--background-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+
+/* Modern Button Styles */
+.button {
+  border-radius: var(--border-radius) !important;
+  font-weight: 600 !important;
+  transition: var(--transition) !important;
+  border: 2px solid transparent !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.button.is-dark {
+  background: var(--text-primary) !important;
+  border: none !important;
+  color: white !important;
+  box-shadow: var(--shadow-md);
+}
+
+.button.is-dark:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  background: var(--primary-color) !important;
+}
+
+.button.is-dark:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-md);
+}
+
+.footer .icon-link {
+  font-size: 25px;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.footer .icon-link:hover {
+  color: var(--primary-color);
+  transform: translateY(-2px);
+}
+
+.link-block a {
+  margin: 8px 4px;
+}
+
+.dnerf {
+  font-variant: small-caps;
+}
+
+
+/* Hero Section Modernization */
+.hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero.is-light {
+  background: var(--background-secondary);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.hero-body {
+  padding: 4rem 1.5rem;
+}
+
+.teaser .hero-body {
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+}
+
+.teaser {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Teaser Video 卡片样式（参考 Image Carousel） */
+.teaser-card {
+  background: var(--background-primary);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+  transition: var(--transition);
+}
+
+.teaser-card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+/* 视频本身圆角 + 内容裁剪 */
+.teaser-card video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+/* 视频下方字幕 */
+.teaser-card .subtitle {
+  font-size: 1rem !important;
+  color: var(--text-secondary);
+  margin-top: 1rem;
+  margin-bottom: 0;
+  font-weight: 500;
+}
+
+
+/* Publication Content Styling */
+.publication-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 2rem !important;
+  line-height: 1.1 !important;
+}
+
+.publication-banner {
+  max-height: 70vh;
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+  margin: 2rem 0;
+}
+
+.publication-banner video {
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--border-radius-lg);
+}
+
+.publication-header .hero-body {
+  padding: 6rem 1.5rem 4rem;
+}
+
+.publication-authors {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+}
+
+.publication-venue {
+  color: var(--text-secondary);
+  width: fit-content;
+  font-weight: 600;
+  background: var(--background-accent);
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  margin-top: 1rem;
+  display: inline-block;
+}
+
+.publication-awards {
+  color: #ef4444;
+  width: fit-content;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  border-left: 4px solid #ef4444;
+  margin-top: 1rem;
+}
+
+.publication-authors a {
+  color: var(--primary-color) !important;
+  text-decoration: none;
+  font-weight: 600;
+  transition: var(--transition);
+  position: relative;
+}
+
+.publication-authors a::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: -2px;
+  left: 0;
+  background: var(--gradient-accent);
+  transition: var(--transition);
+}
+
+.publication-authors a:hover::after {
+  width: 100%;
+}
+
+.publication-authors a:hover {
+  color: var(--primary-hover) !important;
+}
+
+.author-block {
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+.publication-banner img {
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  transition: var(--transition);
+}
+
+.publication-banner img:hover {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Modern Video and Carousel Styling */
+.publication-video {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%;
+  overflow: hidden;
+  border-radius: var(--border-radius-lg) !important;
+  box-shadow: var(--shadow-xl);
+  transition: var(--transition);
+}
+
+.publication-video:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.publication-video iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--border-radius-lg);
+}
+
+.publication-body img {
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+}
+
+.publication-body img:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.results-carousel {
+  overflow: hidden;
+  padding: 1rem 0;
+}
+
+.results-carousel .item {
+  margin: 1rem;
+  overflow: hidden;
+  padding: 1.5rem;
+  font-size: 0;
+  background: var(--background-primary);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+  border: 1px solid var(--border-color);
+}
+
+.results-carousel .item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.results-carousel .item img,
+.results-carousel video {
+  margin: 0;
+  border-radius: var(--border-radius);
+  width: 100%;
+  height: auto;
+}
+
+.results-carousel .subtitle {
+  font-size: 1rem !important;
+  color: var(--text-secondary);
+  margin-top: 1rem;
+  font-weight: 500;
+}
+
+/* Pagination and Misc Improvements */
+.slider-pagination .slider-page {
+  background: var(--primary-color);
+  border-radius: 50%;
+  transition: var(--transition);
+}
+
+.slider-pagination .slider-page.is-active {
+  background: var(--primary-hover);
+  transform: scale(1.2);
+}
+
+.eql-cntrb {
+  font-size: 0.875rem;
+  color: var(--text-light);
+  font-style: italic;
+}
+
+/* Section Titles */
+.title.is-3 {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  color: var(--text-primary);
+  margin-bottom: 2rem !important;
+  position: relative;
+  padding-bottom: 1rem;
+}
+
+.title.is-3::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 3px;
+  background: var(--gradient-accent);
+  border-radius: 2px;
+}
+
+/* Content Improvements */
+.content.has-text-justified {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+.content.has-text-justified p {
+  margin-bottom: 1.5rem;
+}
+
+/* Footer Improvements */
+.footer {
+  background: #ffffff;
+  border-top: 1px solid var(--border-color);
+  padding: 3rem 1.5rem;
+}
+
+.footer .content {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.footer a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+/* BibTeX Styling */
+pre {
+  background: var(--background-accent) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--border-radius) !important;
+  padding: 1.5rem !important;
+  font-size: 0.9rem !important;
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+
+code {
+  background: var(--background-accent) !important;
+  color: var(--text-primary) !important;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace !important;
+}
+
+/* BibTeX Section Improvements */
+.bibtex-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.copy-bibtex-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.copy-bibtex-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.copy-bibtex-btn.copied {
+  background: #10b981;
+}
+
+.copy-bibtex-btn.copied .copy-text::after {
+  content: "ied!";
+}
+
+/* Scroll to Top Button */
+.scroll-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 50px;
+  height: 50px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--transition);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.scroll-to-top:hover {
+  background: var(--primary-hover);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl);
+}
+
+.scroll-to-top.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+
+/* More Works Dropdown */
+.more-works-container {
+  position: fixed;
+  top: 2rem;
+  right: 2rem;
+  z-index: 1000;
+}
+
+.more-works-btn {
+  background: var(--background-primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Inter', sans-serif;
+}
+
+.more-works-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  background: var(--background-secondary);
+  border-color: var(--primary-color);
+}
+
+.more-works-btn .dropdown-arrow {
+  transition: var(--transition);
+  font-size: 0.8rem;
+}
+
+.more-works-btn.active .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.more-works-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 400px;
+  max-width: 90vw;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-xl);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: var(--transition);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.more-works-dropdown.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.close-btn:hover {
+  background: var(--background-accent);
+  color: var(--text-primary);
+}
+
+.works-list {
+  padding: 1rem;
+}
+
+.work-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem;
+  border-radius: var(--border-radius);
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition);
+  margin-bottom: 0.5rem;
+}
+
+.work-item:hover {
+  background: var(--background-accent);
+  transform: translateX(4px);
+}
+
+.work-info h5 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.work-info p {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.work-venue {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  font-style: italic;
+}
+
+.work-item .fas {
+  color: var(--text-light);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+
+/* Mobile Responsive Improvements */
+@media screen and (max-width: 768px) {
+  .hero-body {
+    padding: 2rem 1rem;
+  }
+
+  .publication-header .hero-body {
+    padding: 3rem 1rem 2rem;
+  }
+
+  .publication-title {
+    font-size: 2.5rem !important;
+    line-height: 1.2 !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  .publication-authors {
+    font-size: 1rem !important;
+  }
+
+  .button {
+    margin: 0.25rem !important;
+    font-size: 0.875rem !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  .more-works-container {
+    bottom: 2rem;
+    right: 1rem;
+    top: auto;
+  }
+
+  .more-works-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  .more-works-dropdown {
+    width: calc(100vw - 2rem);
+    right: -1rem;
+    bottom: calc(100% + 0.5rem);
+    top: auto;
+  }
+
+  .results-carousel .item {
+    margin: 0.5rem;
+    padding: 1rem;
+  }
+
+  .teaser .hero-body {
+    padding: 1rem;
+  }
+
+  .content.has-text-justified {
+    font-size: 1rem;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .publication-title {
+    font-size: 2rem !important;
+  }
+
+  .hero-body {
+    padding: 1.5rem 0.75rem;
+  }
+
+  .more-works-container {
+    position: fixed;
+    bottom: 2rem;
+    right: 1rem;
+    z-index: 1000;
+  }
+
+  .more-works-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .more-works-dropdown {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    right: 0;
+    width: calc(100vw - 2rem);
+    max-width: 90vw;
+  }
+
+  .link-block {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Tablet Responsive */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+  .hero-body {
+    padding: 3rem 2rem;
+  }
+
+  .publication-header .hero-body {
+    padding: 4rem 2rem 3rem;
+  }
+}
+
+/* Animation for page load */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero,
+.section {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Improved focus states for accessibility */
+.button:focus,
+.related-works-btn:focus,
+a:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+
+/* Print styles */
+@media print {
+  .more-works-container {
+    display: none;
+  }
+
+  .hero,
+  .section {
+    animation: none;
+  }
+
+  .button {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+  }
+
+}
+
+/* ===============================
+   Project Page tuning (after Overview)
+   你要调“文字大小/行距/代码块大小”就改这里的变量
+================================= */
+:root{
+  --pp-body-font-size: 0.95rem;     /* 段落字号（比 Overview 小一号） */
+  --pp-body-line-height: 0.25rem;      /* 段落行距（更紧一点） */
+  --pp-code-font-size: 0.90rem;     /* code/pre 字号 */
+  --pp-code-line-height: 1.2rem;      /* code/pre 行距 */
+  --pp-subtitle-gap-top: 1.05rem;   /* 小标题上边距 */
+  --pp-subtitle-gap-bottom: 0.55rem;/* 小标题下边距 */
+}
+
+/* 白底 section：背景白 + 全部文字黑（含链接） */
+.section.hero.alt-white{
+  background: #ffffff;
+}
+.section.hero.alt-white,
+.section.hero.alt-white .title,
+.section.hero.alt-white .content{
+  color: #111 !important;
+}
+.section.hero.alt-white a{
+  color: #111 !important;
+  text-decoration: underline;
+}
+
+/* 非 Overview 的正文：统一缩小字号 + 更紧行距 */
+.pp-body{
+  font-size: var(--pp-body-font-size);
+  line-height: var(--pp-body-line-height);
+}
+
+/* code block / inline code */
+.pp-body pre,
+.pp-body code{
+  font-size: var(--pp-code-font-size);
+  line-height: var(--pp-code-line-height);
+}
+.pp-body pre{
+  overflow-x: auto;   /* 防止代码超宽破坏对齐 */
+}
+
+/* 小标题（h3 title is-4）居中，并缩小上下间距 */
+.pp-body .title.is-4{
+  margin-top: var(--pp-subtitle-gap-top);
+  margin-bottom: var(--pp-subtitle-gap-bottom);
+  text-align: center;
+}
+
+/* 列表/段落间距稍微收紧一点 */
+.pp-body p{ margin-bottom: 0.75rem; }
+.pp-body ul, .pp-body ol{ margin-top: 0.5rem; margin-bottom: 0.85rem; }
+
+:root{
+  --pp-body-font-size: 1.1rem;
+  --pp-body-line-height: 1.3;   /* 你调这个会立即生效 */
+  --pp-code-font-size: 0.90rem;
+  --pp-code-line-height: 1.45;
+}
+
+/* 正文整体字号 */
+.pp-body{
+  font-size: var(--pp-body-font-size) !important;
+}
+
+/* ✅ 行距：必须压到具体文本节点上 */
+.pp-body,
+.pp-body p,
+.pp-body li,
+.pp-body ol,
+.pp-body ul{
+  line-height: var(--pp-body-line-height) !important;
+}
+
+/* 代码块行距单独控制 */
+.pp-body pre,
+.pp-body code{
+  font-size: var(--pp-code-font-size) !important;
+  line-height: var(--pp-code-line-height) !important;
+}
+
+
+
+/* =============================================
+   PP-WIDE: 全宽 section（与 Teaser Video 对齐）
+   用法：在 section 上加 class="pp-wide"
+============================================= */
+
+/* 去掉 Bulma .content 对 table 的默认 margin */
+.pp-wide .content table {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* 去掉 Bulma .content 对 pre 的默认缩进 */
+.pp-wide .content pre {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* 标题居中（h2.title.is-3） */
+.pp-wide > .container > .title.is-3 {
+  text-align: center;
+}
+
+/* 正文左对齐（去掉 has-text-centered 的影响） */
+.pp-wide .content.pp-body {
+  text-align: left;
+}
+
+/* 表格：表头居中、正文左对齐 */
+.pp-wide .table thead th {
+  text-align: center;
+  vertical-align: middle;
+}
+.pp-wide .table tbody td {
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Key Features: 小标题（h3.title.is-4）左对齐 */
+#key-features .pp-body .title.is-4 {
+  text-align: left !important;
+}
+
+/* Architecture / Prompt Policy: 小标题居中 */
+.pp-wide .pp-body .title.is-4 {
+  text-align: center;
+}
+#key-features .pp-body .title.is-4 {
+  text-align: left !important;
+}
+
+/* =============================================
+   (1) & (3) Key Features / Architecture 小标题字号统一
+   与 Tech Stack / Prompt Policy 主标题一致
+============================================= */
+#key-features .pp-body .title.is-4,
+#architecture .pp-body .title.is-4 {
+  font-size: var(--pp-section-title-size) !important;
+  line-height: var(--pp-section-title-line-height) !important;
+}
+
+/* =============================================
+   PP-TWO-COL: Tech Stack + Prompt Policy 并排布局
+============================================= */
+.pp-two-col {
+  gap: 1.5rem;
+  align-items: stretch; /* 两列等高 */
+}
+
+.pp-two-col > .column {
+  flex: 1;
+  min-width: 0; /* 防止内容撑破 flex 容器 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 两列内的 .content 容器撑满高度 */
+.pp-two-col > .column > .content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 注：Prompt Policy 代码块垂直居中的 CSS 已移至下方 pp-pre-wrapper 部分 */
+
+/* 并排时标题也居中 */
+.pp-two-col .title.is-3 {
+  text-align: center;
+}
+
+/* 表格/代码块横向滚动，防止溢出 */
+.pp-two-col .table-container,
+.pp-two-col pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* 表格紧凑一点（可选） */
+.pp-two-col .table td,
+.pp-two-col .table th {
+  padding: 0.5em 0.6em;
+  font-size: 0.9rem;
+}
+
+/* 代码块字号略小以适应窄列 */
+.pp-two-col pre {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* 移动端堆叠时的间距（< 1024px） */
+@media screen and (max-width: 1023px) {
+  .pp-two-col > .column:not(:last-child) {
+    margin-bottom: 2.5rem;
+  }
+}
+
+/* =============================================
+   PP-HEADER-ROW: 两个标题并排对齐（Tech Stack + Prompt Policy）
+============================================= */
+
+/* 统一变量：用于 Tech Stack/Prompt Policy 主标题，以及 Key Features/Architecture 小标题 */
+:root {
+  --pp-section-title-size: 1.5rem;
+  --pp-section-title-line-height: 1.3;
+}
+
+.pp-header-row {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pp-header-row .pp-col-title {
+  flex: 1;
+  font-size: var(--pp-section-title-size) !important;
+  line-height: var(--pp-section-title-line-height) !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0.8rem;
+  text-align: center;
+}
+
+/* 装饰线统一高度对齐 */
+.pp-header-row .pp-col-title::after {
+  bottom: 0;
+  width: 50px;
+  height: 3px;
+}
+
+/* 移动端标题行堆叠 */
+@media screen and (max-width: 1023px) {
+  .pp-header-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .pp-header-row .pp-col-title {
+    font-size: 1.4rem !important;
+  }
+  /* 移动端小标题也略小 */
+  #key-features .pp-body .title.is-4,
+  #architecture .pp-body .title.is-4 {
+    font-size: 1.4rem !important;
+  }
+}
+
+/* =============================================
+   Prompt Policy: 强制所有文字为黑色
+============================================= */
+#prompt-policy,
+#prompt-policy p,
+#prompt-policy li,
+#prompt-policy a,
+#prompt-policy h2,
+#prompt-policy h3,
+#prompt-policy h4 {
+  color: #111 !important;
+}
+
+/* code/pre 也强制黑色（覆盖 Bulma 默认） */
+#prompt-policy code,
+#prompt-policy pre,
+#prompt-policy pre code {
+  color: #111 !important;
+  background: #f5f5f5 !important;
+}
+
+/* =============================================
+   (1) Prompt Policy：段落与代码块的"提行式小间距"
+============================================= */
+:root {
+  --pp-tight-gap: 8px; /* 段落与代码块之间的紧凑间距 */
+}
+
+#prompt-policy .pp-lead {
+  margin-bottom: var(--pp-tight-gap) !important;
+}
+
+#prompt-policy .pp-lead + pre {
+  margin-top: 0 !important;
+}
+
+/* =============================================
+   (2) Key Features：小标题灰色圆角背景条
+============================================= */
+#key-features .pp-body .title.is-4 {
+  background: #f5f5f5;
+  border-radius: 10px;
+  padding: 8px 16px;
+  display: inline-block;
+  width: auto;
+  margin-left: 0;
+}
+
+/* =============================================
+   (3) Architecture：左右分栏（右侧留空）
+============================================= */
+.arch-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.arch-left {
+  min-width: 0; /* 防止内容溢出 */
+}
+
+.arch-right {
+  min-width: 0; /* 预留区域 */
+}
+
+/* 移动端堆叠 */
+@media screen and (max-width: 1023px) {
+  .arch-split {
+    grid-template-columns: 1fr;
+  }
+  .arch-right {
+    display: block; /* 移动端显示 Mermaid 图 */
+    margin-top: 1.5rem;
+  }
+}
+
+/* =============================================
+   (1) Prompt Policy 代码块竖直居中
+============================================= */
+#prompt-policy .pp-policy-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#prompt-policy .pp-lead {
+  flex-shrink: 0;
+}
+
+#prompt-policy .pp-pre-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+#prompt-policy .pp-pre-wrapper pre {
+  width: 100%;
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* 移动端取消垂直居中 */
+@media screen and (max-width: 1023px) {
+  #prompt-policy .pp-pre-wrapper {
+    align-items: flex-start;
+  }
+}
+
+/* =============================================
+   (2) Mermaid 渲染：右栏容器 + 全屏 Overlay
+============================================= */
+.mermaid-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-container {
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  padding: 1rem;
+  background: #fff;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* SVG 自适应不变形 */
+.mermaid-container svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* "+" 放大按钮 */
+.mermaid-zoom {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  box-shadow: var(--shadow-md);
+}
+
+.mermaid-zoom:hover {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+/* 全屏 Overlay */
+.mermaid-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 2rem;
+  cursor: pointer;
+}
+
+.mermaid-overlay.is-hidden {
+  display: none;
+}
+
+.mermaid-overlay-inner {
+  background: #fff;
+  border-radius: var(--border-radius-lg);
+  padding: 2rem;
+  max-width: 95vw;
+  max-height: 95vh;
+  overflow: auto;
+  box-shadow: var(--shadow-xl);
+}
+
+.mermaid-overlay-inner svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}

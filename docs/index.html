@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Netease Cloud Music CS Agent (Minimal RAG)</title>
+  <meta name="title" content="Netease Cloud Music CS Agent (Minimal RAG)">
+  <meta name="description"
+    content="A minimal customer-support RAG backend with grounded-only fail-fast refusal, Redis hot-cache, and dev/prod profiles.">
+  <meta name="keywords" content="RAG, Spring Boot, Redis, MySQL, Customer Support, LLM, Guardrails, Caching">
+  <meta name="author" content="Chen Hongshan">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NetEase Cloud Music CS Agent (Minimal RAG)">
+  <meta property="og:description" content="Grounded-only + fail-fast + Redis hot-cache + dev/prod profiles.">
+  <!-- optional -->
+  <!-- <meta property="og:image" content="static/images/social_preview.png"> -->
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="static/images/favicon-v2.ico">
+  <link rel="apple-touch-icon" href="static/images/favicon-v2.ico">
+
+  <!-- CSS (must keep, otherwise page becomes "ugly") -->
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+
+  <link rel="preload" href="static/css/bulma-carousel.min.css" as="style"
+    onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style"
+    onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style"
+    onload="this.onload=null;this.rel='stylesheet'">
+
+  <noscript>
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  </noscript>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- JS (keep for carousel / dropdown / interactions) -->
+  <script defer src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script defer src="static/js/bulma-carousel.min.js"></script>
+  <script defer src="static/js/bulma-slider.min.js"></script>
+  <script defer src="static/js/index.js"></script>
+
+  <!-- Mermaid for Architecture diagram -->
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script defer src="static/js/mermaid-init.js"></script>
+</head>
+
+
+
+
+
+<body>
+
+
+  <!-- Scroll to Top Button -->
+  <button class="scroll-to-top" onclick="scrollToTop()" title="Scroll to top" aria-label="Scroll to top">
+    <i class="fas fa-chevron-up"></i>
+  </button>
+
+
+  <!-- MAIN -->
+  <main id="main-content">
+    <section class="hero">
+      <div class="hero-body">
+        <div class="container is-max-desktop">
+          <div class="columns is-centered">
+            <div class="column has-text-centered">
+              <!-- TODO: Replace with your paper title -->
+              <h1 class="title is-1 publication-title">NetEase Cloud Music CS Agent <br> (Minimal RAG)</h1>
+              <div class="is-size-5 publication-authors">
+                <span class="author-block">
+                  <a href="https://github.com/ChenHongshan333" target="_blank">Chen Hongshan</a>
+                </span>
+              </div>
+
+              <div class="is-size-6 publication-authors">
+                <span class="author-block">Spring Boot · RAG · Redis Cache · Guardrails</span>
+              </div>
+
+              <div class="publication-links">
+
+                <span class="link-block">
+                  <a href="https://github.com/ChenHongshan333/Netease-music-agent-backend-demo" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="fab fa-github"></i></span>
+                    <span>GitHub</span>
+                  </a>
+                </span>
+
+                <span class="link-block">
+                  <a href="https://github.com/ChenHongshan333/Netease-music-agent-backend-demo#readme" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="fas fa-book"></i></span>
+                    <span>README</span>
+                  </a>
+                </span>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+
+    <!-- Teaser video-->
+    <section class="hero teaser">
+      <div class="container is-max-desktop">
+        <div class="hero-body">
+          <!-- 卡片容器：白色圆角 + 阴影 -->
+          <div class="teaser-card">
+            <video poster="" id="tree" autoplay controls muted loop height="100%" preload="metadata">
+              <source src="static/videos/demo with script.mp4" type="video/mp4">
+            </video>
+            <h2 class="subtitle has-text-centered">
+              Demo of the project
+            </h2>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- End teaser video -->
+
+    <!-- Paper abstract -->
+    <section class="section hero is-light pp-wide">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Overview</h2>
+        <div class="content has-text-justified">
+          <p>
+            A minimal customer-support RAG backend with production-minded guardrails:
+            strict grounding, fail-fast refusal when retrieval has zero hits, Redis hot-cache with smart TTL,
+            and dev/prod profiles for realistic deployment.
+          </p>
+        </div>
+      </div>
+    </section>
+    <!-- End paper abstract -->
+
+    <!-- ===================== -->
+    <!-- Background (WHITE)    -->
+    <!-- ===================== -->
+    <section class="section hero alt-white pp-wide" id="background">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Project Background</h2>
+
+        <div class="content has-text-justified pp-body">
+          <p>Customer support queries in music streaming apps (e.g., membership renewal, pricing) are repetitive and
+            high-volume.</p>
+          <p>This project demonstrates a minimal RAG pipeline with production-minded engineering choices:</p>
+
+          <ul>
+            <li><strong>Predictable control flow:</strong> synchronous end-to-end pipeline for stability</li>
+            <li><strong>Hallucination containment:</strong> refusal gate when retrieval has no hit</li>
+            <li><strong>Performance optimization:</strong> Redis caching for hot queries (with TTL and graceful
+              degradation)</li>
+            <li><strong>Environment separation:</strong> H2 (dev) vs MySQL + Redis (prod simulation) via Spring
+              Profiles</li>
+            <li><strong>Vendor-agnostic LLM integration:</strong> OpenAI-compatible protocol (DashScope/Qwen by
+              default)</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ===================== -->
+    <!-- Architecture (GRAY)   -->
+    <!-- ===================== -->
+    <section class="section hero is-light pp-wide" id="architecture">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Architecture</h2>
+
+        <!-- 左右分栏：左侧内容，右侧 Mermaid 图 -->
+        <div class="arch-split">
+          <div class="arch-left">
+            <div class="content has-text-justified pp-body">
+
+              <h3 class="title is-4">Data Flow (Fail-Fast + Cache + RAG)</h3>
+              <ol>
+                <li>Input normalization (trim / simple cleanup)</li>
+                <li>Redis cache lookup (hot query optimization)</li>
+                <li>Top-K retrieval from KnowledgeBase (K=5)</li>
+                <li>Refusal gate: if <code>hits == 0</code>, return refusal (no LLM)</li>
+                <li>Prompt assembly: inject Known Info</li>
+                <li>LLM inference (DashScope OpenAI-compatible endpoint)</li>
+                <li>Write-back to Redis with TTL (Short TTL for refusals to avoid stale refusals)</li>
+              </ol>
+
+            </div>
+          </div>
+          <div class="arch-right">
+            <!-- Mermaid 渲染区域 -->
+            <div class="mermaid-wrap">
+              <button class="mermaid-zoom" title="Full screen">+</button>
+              <div id="arch-mermaid" class="mermaid-container"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Mermaid 源码（隐藏） -->
+    <script type="text/plain" id="arch-mermaid-src">
+flowchart LR
+  U[User Question] --> C[AgentController]
+  C --> KV{Redis Cache}
+
+  %% Read Path: Cache Hit
+  KV -- Hit --> H[Return Cached JSON]
+  H -.->|Could be Refusal or Answer| C
+
+  %% Write Path: Cache Miss -> Split Logic
+  KV -- Miss --> R[Top-K Retrieval]
+
+  %% Branch 1: No Knowledge (Refusal)
+  R -- Hits=0 --> Z[Refusal Msg]
+  Z -- "Write: Short TTL (30s)" --> W1[Redis: Short-lived refusal cache]
+  W1 --> KV
+  Z --> C
+
+  %% Branch 2: Knowledge Found (Answer)
+  R -- Hits>0 --> P[Build Prompt]
+  P --> L[DashScope Chat]
+  L -- "Write: Long TTL (10m)" --> W2[Redis: Standard Cache]
+  W2 --> KV
+  L --> C
+
+  C --> U
+
+    </script>
+
+    <!-- Mermaid 全屏 Overlay -->
+    <div id="mermaid-overlay" class="mermaid-overlay is-hidden">
+      <div class="mermaid-overlay-inner"></div>
+    </div>
+
+
+    
+    <!-- ===================== -->
+    <!-- Key Features (WHITE)  -->
+    <!-- ===================== -->
+    <section class="section hero alt-white pp-wide" id="key-features">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Key Features</h2>
+
+        <div class="content has-text-justified pp-body">
+
+          <h3 class="title is-4">Strict Grounding Policy (Fail-Fast)</h3>
+          <ul>
+            <li><strong>Hit = 0:</strong> return fixed refusal immediately (<strong>no LLM call</strong>)</li>
+            <li><strong>Hit &gt; 0:</strong> inject "Known Info" and answer <strong>only</strong> based on retrieved
+              context</li>
+          </ul>
+
+          <h3 class="title is-4">Dual-Profile Support (Dev vs Prod Simulation)</h3>
+          <ul>
+            <li><strong>dev (default):</strong> H2 in-memory, zero infrastructure required</li>
+            <li><strong>prod:</strong> MySQL persistence + Redis caching (Docker Compose), closer to real-world
+              deployment</li>
+          </ul>
+
+          <h3 class="title is-4">Redis Caching (Hot Query Optimization)</h3>
+          <ul>
+            <li><strong>Cache-First Strategy:</strong> Checks Redis before triggering retrieval or LLM inference to
+              reduce latency and token costs.</li>
+            <li><strong>Smart TTL:</strong>
+              <ul>
+                <li><strong>Standard Answer:</strong> Long TTL (e.g., 10 min) for high cache hit rate.</li>
+                <li><strong>Refusal (Hits=0):</strong> Short TTL (e.g., 30s) to prevent "stale refusals" after
+                  KnowledgeBase updates.</li>
+              </ul>
+            </li>
+            <li><strong>Stability:</strong> Redis failures are logged as warnings; the ...tically falls back to
+              DB+LLM without breaking the user request.</li>
+          </ul>
+
+          <h3 class="title is-4">Minimal Retrieval Baseline (Top-K)</h3>
+          <ul>
+            <li>Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)</li>
+            <li>Optional query normalization + retry to improve recall on noisy inputs</li>
+          </ul>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- Image carousel -->
+    <section class="hero is-small is-light">
+      <div class="hero-body">
+        <div class="container is-max-desktop">
+          <div id="results-carousel" class="carousel results-carousel">
+            <div class="item">
+              <!-- TODO: Replace with your research result images -->
+              <img src="static/images/swagger.png" alt="First research result visualization" loading="lazy" />
+              <!-- TODO: Replace with description of this result -->
+              <h2 class="subtitle has-text-centered">
+                Swagger UI (endpoint visible)
+              </h2>
+            </div>
+            <div class="item">
+              <!-- Your image here -->
+              <img src="static/images/response.png" alt="Second research result visualization" loading="lazy" />
+              <h2 class="subtitle has-text-centered">
+                Example API response (answer + hits)
+              </h2>
+            </div>
+            <div class="item">
+              <!-- Your image here -->
+              <img src="static/images/cache-logs.png" alt="Third research result visualization" loading="lazy" />
+              <h2 class="subtitle has-text-centered">
+                Cache proof logs (MISS → LLM CALL → WRITE, then HIT with no LLM)
+              </h2>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- End image carousel -->
+
+
+    
+    
+
+
+    <!-- ===================== -->
+    <!-- Tech Stack + Prompt Policy (并排) -->
+    <!-- ===================== -->
+    <section class="section hero alt-white pp-wide" id="tech-prompt-row">
+      <div class="container is-max-desktop">
+
+        <!-- 标题行：两个标题并排对齐 -->
+        <div class="pp-header-row">
+          <h2 class="title is-3 pp-col-title">Tech Stack</h2>
+          <h2 class="title is-3 pp-col-title">Prompt Policy</h2>
+        </div>
+
+        <div class="columns is-desktop pp-two-col">
+
+          <!-- 左列：Tech Stack -->
+          <div class="column" id="tech-stack">
+            <div class="content has-text-justified pp-body">
+              <div class="table-container">
+                <table class="table is-fullwidth is-striped">
+                  <thead>
+                    <tr>
+                      <th>Component</th>
+                      <th>Choice</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Language</td>
+                      <td>Java 17</td>
+                      <td>Core development language</td>
+                    </tr>
+                    <tr>
+                      <td>Framework</td>
+                      <td>Spring Boot</td>
+                      <td>Web MVC and dependency injection</td>
+                    </tr>
+                    <tr>
+                      <td>ORM</td>
+                      <td>Spring Data JPA</td>
+                      <td>Repository abstraction over DB</td>
+                    </tr>
+                    <tr>
+                      <td>Database (dev)</td>
+                      <td>H2</td>
+                      <td>Zero-infra rapid development</td>
+                    </tr>
+                    <tr>
+                      <td>Database (prod)</td>
+                      <td>MySQL 8</td>
+                      <td>Persistence for production simulation</td>
+                    </tr>
+                    <tr>
+                      <td>Cache (prod)</td>
+                      <td>Redis 7</td>
+                      <td>Hot query caching with TTL</td>
+                    </tr>
+                    <tr>
+                      <td>LLM Integration</td>
+                      <td>OkHttp + Jackson</td>
+                      <td>OpenAI-compatible chat completion client</td>
+                    </tr>
+                    <tr>
+                      <td>API Docs</td>
+                      <td>OpenAPI / Swagger UI</td>
+                      <td>API exploration and testing</td>
+                    </tr>
+                    <tr>
+                      <td>Deployment</td>
+                      <td>Docker Compose</td>
+                      <td>One-command infra startup</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右列：Prompt Policy -->
+          <div class="column" id="prompt-policy">
+            <div class="content has-text-justified pp-body pp-policy-content">
+              <p class="pp-lead">The system uses a rigid template to prevent the LLM from using external knowledge.</p>
+              <div class="pp-pre-wrapper">
+                <pre><code class="language-text">[System Role]
+Persona: NetEase Cloud Music customer support agent
+Constraint: Answer ONLY using the provided "Known Info".
+Failure Case: If the info is insufficient, reply exactly:
+"抱歉，小云暂时还没学会这个问题"
+No fabrication allowed.
+
+[User Role]
+Known Info:
+[1] &lt;retrieved_answer_1&gt;
+[2] &lt;retrieved_answer_2&gt;
+...
+User Question: &lt;question&gt;</code></pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+
+
+
+
+
+    <!-- ===================== -->
+    <!-- AI Assisted (GRAY)    -->
+    <!-- ===================== -->
+    <section class="section hero is-light pp-wide" id="ai-assisted-development">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">AI-Assisted Development (Vibe Coding)</h2>
+
+        <div class="content has-text-justified pp-body">
+          <p>This project was developed with AI assistance using <strong>Cursor</strong> ...(model:
+            <strong>GPT-5.2</strong>), utilizing a "Human-in-the-Loop" workflow:
+          </p>
+
+          <ul>
+            <li><strong>Scaffolding &amp; Drafting:</strong> Rapid generation of Spring Boot boilerplate and
+              configuration wiring.</li>
+            <li><strong>Documentation &amp; Visualization:</strong> Iterative refinement of the README and Mermaid
+              architecture diagrams.</li>
+            <li><strong>Debugging Support:</strong> Analyzing stack traces and resolving dependency conflicts.</li>
+          </ul>
+
+          <p><strong>Verification:</strong><br>
+            All AI-assisted changes were <strong>manually reviewed and adjusted</strong>....ible drills (cache
+            hit/miss logs, Redis-down degradation drill).
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+
+
+
+    <footer class="footer">
+      <div class="container">
+        <div class="columns is-centered">
+          <div class="column is-8">
+            <div class="content">
+
+              <p>
+                This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template"
+                  target="_blank">Academic Project Page Template</a> which was adopted from the <a
+                  href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+                You are free to borrow the source code of this website, we just ask that you link back to this page in
+                the footer. <br> This website is licensed under a <a rel="license"
+                  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+                  Commons Attribution-ShareAlike 4.0 International License</a>.
+              </p>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Statcounter tracking code -->
+
+    <!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+</body>
+
+</html>
