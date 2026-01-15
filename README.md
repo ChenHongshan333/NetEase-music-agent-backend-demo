@@ -9,7 +9,7 @@
 
 A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume customer support scenarios, with **production-minded engineering** (profiles, Docker infra, caching, and degradation drills).
 
-**Project Page:** : `https://chenhongshan333.github.io/Netease-music-agent-backend-demo/`  
+**Project Page:** : <https://chenhongshan333.github.io/Netease-music-agent-backend-demo/>
 
 ---
 
@@ -297,18 +297,36 @@ flowchart LR
 
 Key source files map to the architecture above:
 
-```text
-src/main/java/com/example/csagent
-├── controller
-│   └── AgentController.java       # API Entry point (REST)
-├── service
-│   ├── KnowledgeBaseService.java  # Core Logic: Retrieval + RAG orchestration
-│   └── ai
-│       └── DashScopeClient.java   # LLM Integration (OpenAI-compatible)
-├── repository
-│   └── KnowledgeBaseRepository.java # DB Layer (JPA)
-└── entity
-    └── KnowledgeBase.java         # Data Schema
+## Repository Structure
+
+Key source files map to the architecture above:
+
+```mermaid
+graph LR
+    %% Root Package
+    Root["src/main/java/com/example/csagent"]
+
+    %% Packages (Folders)
+    PkgCtrl[controller]
+    PkgSvc[service]
+    PkgAi[ai]
+    PkgRepo[repository]
+    PkgEntity[entity]
+
+    %% Files with descriptions (using <br/> for clarity)
+    FileAC["AgentController.java<br/>(API Entry point / REST)"]
+    FileKBS["KnowledgeBaseService.java<br/>(Core Logic: Retrieval + RAG orchestration)"]
+    FileDSC["DashScopeClient.java<br/>(LLM Integration / OpenAI-compatible)"]
+    FileKBR["KnowledgeBaseRepository.java<br/>(DB Layer / JPA)"]
+    FileKB["KnowledgeBase.java<br/>(Data Schema)"]
+
+    %% Structure Relationships
+    Root --> PkgCtrl --> FileAC
+    Root --> PkgSvc
+    PkgSvc --> FileKBS
+    PkgSvc --> PkgAi --> FileDSC
+    Root --> PkgRepo --> FileKBR
+    Root --> PkgEntity --> FileKB
 ```
 
 ---
