@@ -141,7 +141,8 @@ You should see containers like:
 **After startup:**
 
 * **Swagger UI:** `http://localhost:8080/swagger-ui/index.html`
-* **H2 Console:** `http://localhost:8080/h2`
+* **MySQL (Docker):** connect to `localhost:3306` (db: `netease_agent`)
+* **Redis (Docker):** connect to `localhost:6379`
 
 #### 2.2 Run with prod profile
 
