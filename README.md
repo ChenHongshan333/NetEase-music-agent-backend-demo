@@ -48,6 +48,7 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 - Dual-Profile Support (Dev vs Prod Simulation)
 - Redis Caching (Hot Query Optimization)
 - Minimal Retrieval Baseline (Top-K)
+> You can refer to the **Project Page** for more detailed explanation. 
   
 ---
 
