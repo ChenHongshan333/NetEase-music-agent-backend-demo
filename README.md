@@ -297,10 +297,6 @@ flowchart LR
 
 Key source files map to the architecture above:
 
-## Repository Structure
-
-Key source files map to the architecture above:
-
 ```mermaid
 graph LR
     %% Root Package
