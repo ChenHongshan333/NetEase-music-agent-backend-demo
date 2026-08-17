@@ -35,16 +35,4 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBase, Lo
      */
     @Query("SELECT k FROM KnowledgeBase k WHERE k.id = :id AND k.active = true")
     KnowledgeBase findByIdAndActiveTrue(@Param("id") Long id);
-
-    @Query("""
-    select k from KnowledgeBase k
-    where k.active = true and (
-        lower(coalesce(k.question,'')) like lower(concat('%', :q, '%'))
-        or lower(coalesce(k.keywords,'')) like lower(concat('%', :q, '%'))
-        or lower(:q) like lower(concat('%', coalesce(k.question,''), '%'))
-        or lower(:q) like lower(concat('%', coalesce(k.keywords,''), '%'))
-    )
-    
-    """)
-    List<KnowledgeBase> searchFuzzy(@Param("q") String q, Pageable pageable);
 }

@@ -29,22 +29,12 @@ public class KnowledgeBaseService {
         List<KnowledgeBase> hits = repository.searchActiveTop(question, top5);
         if (!hits.isEmpty()) return hits;
 
-        String q2 = normalizeQuestion(question);
+        String q2 = QuestionNormalizer.normalize(question);
         if (!q2.isBlank() && !q2.equals(question)) {
             return repository.searchActiveTop(q2, top5);
         }
 
         return hits;
-    }
-
-    private String normalizeQuestion(String q) {
-        if (q == null) return "";
-        String s = q.trim();
-        s = s.replaceAll("[\\s\\p{Punct}，。！？、；：“”‘’（）()【】\\[\\]{}<>《》]+", "");
-        s = s.replaceAll("(请问|麻烦|帮我|我想问|想问|请|怎么|如何|怎样|要|想|能|可以|我想知道)+", "");
-        s = s.replaceAll("(呢|呀|吗|啊|嘛)+$", "");
-        s = s.replaceAll("(要多少钱|多少钱|多少|价格是多少|价钱是多少|是多少)$", "");
-        return s;
     }
 
     @Transactional
