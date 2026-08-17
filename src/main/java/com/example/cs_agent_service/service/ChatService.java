@@ -117,14 +117,16 @@ public class ChatService {
             return Optional.empty();
         }
 
-        // RedisCacheService 内部已把异常降级为 Optional.empty()，这里的 try 兜的是反序列化失败。
-        Optional<String> raw = cache.get(cacheKey);
-        if (raw.isEmpty()) {
-            log.info("[chat] cache=MISS key={}", cacheKey);
-            return Optional.empty();
-        }
-
+        // 读路径 fail open：缓存的任何问题（连接失败、超时、反序列化失败）都降级为 cache miss。
+        // RedisCacheService 内部已经吞了 Redis 异常，这里再兜一层是为了不把正确性依赖在
+        // 协作者的实现细节上——ChatService 自己就必须能扛住一个会抛异常的缓存。
         try {
+            Optional<String> raw = cache.get(cacheKey);
+            if (raw.isEmpty()) {
+                log.info("[chat] cache=MISS key={}", cacheKey);
+                return Optional.empty();
+            }
+
             @SuppressWarnings("unchecked")
             Map<String, Object> payload = objectMapper.readValue(raw.get(), Map.class);
             String answer = String.valueOf(payload.get("answer"));
@@ -133,9 +135,8 @@ public class ChatService {
             return Optional.of(hits == 0
                     ? ChatResult.refused(answer, true)
                     : ChatResult.answered(answer, hits, true));
-        } catch (Exception ignored) {
-            // 解析失败视为 cache miss，继续走主链路
-            log.info("[chat] cache=MISS(unparsable) key={}", cacheKey);
+        } catch (Exception e) {
+            log.warn("[chat] cache read failed, degrade to miss. key={}", cacheKey, e);
             return Optional.empty();
         }
     }

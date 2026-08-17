@@ -22,7 +22,7 @@ public class StubLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubLlmClient.class);
 
-    static final String STUB_ANSWER =
+    public static final String STUB_ANSWER =
             "（stub 回答）你好，我是网易云音乐智能客服小云~ 这是本地 stub 模式返回的固定答案。";
 
     private final long delayMs;
