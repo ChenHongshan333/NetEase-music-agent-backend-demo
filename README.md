@@ -1,7 +1,8 @@
 # NetEase Cloud Music Intelligent Customer Support Agent (Minimal RAG)
 
+[![CI](https://github.com/ChenHongshan333/Netease-music-agent-backend-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/ChenHongshan333/Netease-music-agent-backend-demo/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-17-blue)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-blue)
 ![Database](https://img.shields.io/badge/Database-H2%20%2F%20MySQL-lightgrey)
 ![Cache](https://img.shields.io/badge/Cache-Redis-lightgrey)
 ![Docker](https://img.shields.io/badge/Docker-Compose-blue)
