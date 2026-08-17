@@ -31,6 +31,7 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 - [Architecture](#architecture)
   - [1. Data Flow (Fail-Fast + Cache + RAG)](#1-data-flow-fail-fast--cache--rag)
   - [2. Repository Structure](#2-repository-structure)
+- [Benchmarks](#benchmarks)
 - [Docker Compose Reference](#docker-compose-reference)
 - [AI-Assisted Development (Vibe Coding)](#ai-assisted-development-vibe-coding)
 - [License](#license)
@@ -326,6 +327,45 @@ graph LR
     Root --> PkgRepo --> FileKBR
     Root --> PkgEntity --> FileKB
 ```
+
+---
+
+## Benchmarks
+
+Measured on 2026-08-17, `prod` profile (MySQL + Redis via docker-compose), AMD Ryzen
+7 8745H / 16 logical cores / 15.3 GB, JDK 17.0.12, Spring Boot 4.0.1. Load generator
+is `benchmarks/bench.py` (standard library only) on the same host.
+
+| scenario | n | concurrency | p50 | p95 | p99 | throughput | upstream |
+|---|---|---|---|---|---|---|---|
+| `refusal` — retrieval 0 hits, refusal gate fires | 500 | 20 | 23.4 ms | 33.3 ms | 43.0 ms | 778 req/s | not called |
+| `cache_hit` — Redis hit | 500 | 20 | 13.5 ms | 21.9 ms | 26.3 ms | 1321 req/s | not called |
+| `llm_path` — full chain, **real DashScope** | 20 | 1 | 2364 ms | 3175 ms | 3175 ms | — | `qwen-plus` |
+| `llm_path` — full chain, **stubbed upstream** (2364 ms injected) | 500 | 20 | 2401 ms | 2446 ms | 2469 ms | 8.3 req/s | stub |
+
+Two things these numbers are for:
+
+- **The refusal gate is worth ~95×** at p95 (33.3 ms vs 3175 ms), and it spends zero
+  API quota. Questions the knowledge base cannot ground never reach the model.
+- **The service adds 1.6 % on top of upstream latency.** With the upstream pinned to
+  a known 2364 ms, measured p50 is 2401 ms — 37 ms for two `SELECT`s, prompt
+  assembly and two Redis operations. Throughput lands within 2 % of the theoretical
+  `20 / 2.364 s`, so at concurrency 20 the service contributes no queueing.
+
+The real-DashScope row and the stubbed row measure different things on purpose: the
+first is what a user waits, the second is what the service can carry regardless of
+how the upstream feels today. Do not quote them interchangeably.
+
+Reproducing the load test also **found a real bug**: `spring.jpa.open-in-view`
+defaults to on, so a JDBC connection was pinned for the whole request — including
+the 2.4 s model call that needs no database. Hikari's default pool of 10 therefore
+became the concurrency ceiling: at concurrency 20 only ~10 requests were ever in
+flight, giving 3.5 req/s instead of 8.3. Full A/B and the reasoning for fixing it by
+releasing the connection rather than growing the pool are in
+[docs/benchmarks.md](docs/benchmarks.md).
+
+> **Full metadata, repro commands, per-run raw output and the reproducibility
+> check**: [docs/benchmarks.md](docs/benchmarks.md).
 
 ---
 

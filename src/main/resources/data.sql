@@ -1,4 +1,27 @@
 -- 网易云音乐客服知识库初始化数据
+--
+-- 这个脚本在每次启动时都会执行（spring.sql.init.mode=always）。
+-- dev/test 用的是内存 H2，每次都是空库所以无所谓；但 prod profile 接的是
+-- 带持久卷的 MySQL，纯 INSERT 会让整份种子数据在每次重启后再叠一层。
+-- 实测某个 compose 卷跑到了 300 行 / 10 个 distinct question ——
+-- 于是 Top-5 检索返回的是同一条知识的 5 份副本，prompt 里塞了 5 段重复的
+-- 【已知信息】，白烧 token 且削弱了检索本该提供的多样性。
+--
+-- 下面这条 DELETE 让重新灌种子这件事变成幂等的：只清掉种子自己的那几条，
+-- 通过 API 新增的其他条目不受影响。
+DELETE FROM knowledge_base WHERE question IN (
+    '黑胶VIP会员价格是多少？',
+    '学生认证黑胶VIP怎么开通？',
+    '为什么搜不到某首歌？',
+    '怎么上传歌词？',
+    '云贝有什么用？',
+    'APP闪退怎么办？',
+    '如何取消自动续费？',
+    '怎么设置个性化推荐？',
+    '如何申请音乐人认证？',
+    '私人FM不喜欢的歌怎么办？'
+);
+
 INSERT INTO knowledge_base (question, answer, keywords, active, create_time) VALUES
 ('黑胶VIP会员价格是多少？', '黑胶VIP会员价格请以App页面显示为准，活动价格可能会有变动。目前支持包月、包季、包年等多种订购方式，学生用户可享受专属优惠价格。具体价格和优惠活动请在网易云音乐App内查看最新信息。', '黑胶VIP,会员,价格,费用,学生,家庭,优惠', true, NOW()),
 
