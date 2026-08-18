@@ -24,6 +24,7 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
   - [1. Rapid Development (Default: H2)](#1-rapid-development-default-h2)
   - [2. Production Simulation (Docker: MySQL + Redis)](#2-production-simulation-docker-mysql--redis)
   - [3. Degradation Drill (Redis Down)](#3-degradation-drill-redis-down)
+- [Design notes](#design-notes)
 - [Configuration](#configuration)
   - [Spring Profiles](#spring-profiles)
 - [API Reference](#api-reference)
@@ -193,6 +194,69 @@ docker start csagent-redis
 **Expected results:**
 * API still returns normally.
 * Logs show cache miss + Redis error swallowed (warn only), then fallback to DB/LLM path.
+
+Now do the same thing against a **write** endpoint and watch it behave in the
+opposite direction:
+
+```bash
+docker stop csagent-redis
+curl.exe -X POST http://localhost:8080/api/knowledge \
+  -H "Content-Type: application/json" -H "Idempotency-Key: drill-1" \
+  -d '{"question":"drill","answer":"drill","keywords":"drill"}'
+# -> 503 Service Unavailable, and nothing is written
+docker start csagent-redis
+```
+
+That difference is deliberate. See the next section.
+
+---
+
+## Design notes
+
+### 1. Reads fail open, writes fail closed — on purpose
+
+Redis is the same dependency in both paths, and the two paths degrade in opposite
+directions when it dies:
+
+| | read path (`GET /api/agent/chat`) | write path (`POST/PUT/DELETE` with `Idempotency-Key`) |
+|---|---|---|
+| Redis is down | **fail open** — treat as cache miss, serve the request | **fail closed** — 503, refuse to execute |
+| worst case | one extra database query and one extra model call | the write is briefly unavailable |
+| why | the cache is an optimisation; correctness does not depend on it | without the store we cannot guarantee "exactly once", and a duplicate write is worse than a short outage |
+
+The rule underneath: **degrade toward the cheaper mistake.** On the read path the
+cheap mistake is doing redundant work. On the write path the cheap mistake is not
+doing the work at all — because the expensive mistake, duplicating it, may not be
+reversible. A blanket "Redis failures are non-fatal" policy would have been simpler
+to write and would have silently allowed duplicate writes during exactly the
+incident where you least want them.
+
+Both directions are covered by tests: `CacheDegradationTest` asserts HTTP 200 with a
+throwing cache, `IdempotencyTest.storeOutageFailsClosed` asserts 503 and that the
+business method never ran.
+
+### 2. "I don't know" is 200; "I'm broken" is 503
+
+The refusal gate answers with HTTP **200** and `hits: 0`. An upstream failure — the
+circuit breaker being open, or retries exhausted — answers with **503** plus
+`Retry-After`.
+
+These must not be collapsed into one status. Retrying a refusal is pointless: the
+knowledge base still will not contain the answer, and the client burns a round trip
+to learn the same thing. Retrying a degraded response is exactly the right move.
+Returning 200 for both would leave every caller with only two bad options — never
+retry, or retry everything.
+
+The `Retry-After` value is the circuit breaker's open duration, so the client is
+told to come back precisely when we will next probe the upstream.
+
+### 3. The degraded answer is never cached
+
+A successful answer is cached for 600 s; a refusal for 30 s; a **degraded** response
+for zero. Caching it would let a few seconds of upstream trouble pin
+*"小云暂时无法回答"* in the cache for ten minutes, still served long after the
+upstream recovered. That is cache poisoning, and it converts a brief incident into a
+long one.
 
 ---
 
