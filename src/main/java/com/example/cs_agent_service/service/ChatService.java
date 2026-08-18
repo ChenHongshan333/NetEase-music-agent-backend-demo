@@ -4,6 +4,7 @@ import com.example.cs_agent_service.config.CacheProperties;
 import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.entity.KnowledgeBase;
+import com.example.cs_agent_service.observability.AgentMetrics;
 import com.example.cs_agent_service.service.cache.RedisCacheService;
 import com.example.cs_agent_service.service.llm.LlmClient;
 import com.example.cs_agent_service.service.llm.LlmException;
@@ -58,6 +59,7 @@ public class ChatService {
     private final CircuitBreaker circuitBreaker;
     private final ResilienceProperties resilienceProps;
     private final Clock clock;
+    private final AgentMetrics metrics;
 
     public ChatService(
             KnowledgeBaseService knowledgeBaseService,
@@ -68,7 +70,8 @@ public class ChatService {
             RetryExecutor retryExecutor,
             CircuitBreaker circuitBreaker,
             ResilienceProperties resilienceProps,
-            Clock clock
+            Clock clock,
+            AgentMetrics metrics
     ) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.llmClient = llmClient;
@@ -79,6 +82,7 @@ public class ChatService {
         this.circuitBreaker = circuitBreaker;
         this.resilienceProps = resilienceProps;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public ChatResult chat(String question) {
@@ -99,8 +103,11 @@ public class ChatService {
         // 2) 检索
         List<KnowledgeBase> hits = knowledgeBaseService.searchTop5(q);
 
+        metrics.retrievalHits(hits == null ? 0 : hits.size());
+
         // 3) 拒答闸门：0 命中绝不调用 LLM
         if (hits == null || hits.isEmpty()) {
+            metrics.refusal();
             ChatResult result = ChatResult.refused(REFUSAL_ANSWER, false);
             // 拒答用很短的 TTL：刚补进知识库的条目要能快速生效
             writeCacheSafely(cacheKey, result, cacheProps.getRefusalTtlSeconds());
@@ -123,7 +130,9 @@ public class ChatService {
                             () -> llmClient.complete(SYSTEM_PROMPT, userPrompt),
                             deadline));
         } catch (CircuitOpenException | LlmException e) {
-            log.warn("[chat] degraded: {}", e.toString());
+            String reason = e instanceof CircuitOpenException ? "circuit_open" : "retry_exhausted";
+            metrics.degraded(reason);
+            log.warn("[chat] degraded reason={}: {}", reason, e.toString());
 
             // 降级结果绝对不能进正常答案缓存。上游抖动一下就把一句"我暂时坏了"
             // 锁进缓存 600 秒，之后即使上游早已恢复，所有问这个问题的用户
@@ -162,6 +171,7 @@ public class ChatService {
         try {
             Optional<String> raw = cache.get(cacheKey);
             if (raw.isEmpty()) {
+                metrics.cacheLookup(false);
                 log.info("[chat] cache=MISS key={}", cacheKey);
                 return Optional.empty();
             }
@@ -170,11 +180,13 @@ public class ChatService {
             Map<String, Object> payload = objectMapper.readValue(raw.get(), Map.class);
             String answer = String.valueOf(payload.get("answer"));
             int hits = payload.get("hits") instanceof Number n ? n.intValue() : 0;
+            metrics.cacheLookup(true);
             log.info("[chat] cache=HIT key={}", cacheKey);
             return Optional.of(hits == 0
                     ? ChatResult.refused(answer, true)
                     : ChatResult.answered(answer, hits, true));
         } catch (Exception e) {
+            metrics.cacheLookup(false);
             log.warn("[chat] cache read failed, degrade to miss. key={}", cacheKey, e);
             return Optional.empty();
         }

@@ -4,6 +4,7 @@ import com.example.cs_agent_service.config.CacheProperties;
 import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.entity.KnowledgeBase;
+import com.example.cs_agent_service.observability.AgentMetrics;
 import com.example.cs_agent_service.service.cache.RedisCacheService;
 import com.example.cs_agent_service.service.llm.LlmClient;
 import com.example.cs_agent_service.service.resilience.CircuitBreaker;
@@ -66,12 +67,14 @@ class RefusalGateTest {
         // 不是"调失败了怎么办"——后者归 ChatDegradationTest 管。
         ResilienceProperties resilienceProps = new ResilienceProperties();
         Clock clock = Clock.systemUTC();
+        CircuitBreaker breaker = new CircuitBreaker(resilienceProps, clock);
+        AgentMetrics metrics = new AgentMetrics(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), breaker);
 
         chatService = new ChatService(
                 knowledgeBaseService, llmClient, cache, cacheProps, new ObjectMapper(),
-                new RetryExecutor(resilienceProps, clock),
-                new CircuitBreaker(resilienceProps, clock),
-                resilienceProps, clock);
+                new RetryExecutor(resilienceProps, clock, metrics),
+                breaker, resilienceProps, clock, metrics);
     }
 
     @Test

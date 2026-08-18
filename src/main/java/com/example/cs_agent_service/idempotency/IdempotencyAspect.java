@@ -1,6 +1,7 @@
 package com.example.cs_agent_service.idempotency;
 
 import com.example.cs_agent_service.config.IdempotencyProperties;
+import com.example.cs_agent_service.observability.AgentMetrics;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -64,12 +65,15 @@ public class IdempotencyAspect {
     /** 序列化响应体用容器里那一个 mapper，保证回放出去的字节与首次响应一致。 */
     private final JsonMapper responseMapper;
 
+    private final AgentMetrics metrics;
+
     public IdempotencyAspect(IdempotencyStore store, IdempotencyProperties props,
-                             Clock clock, JsonMapper responseMapper) {
+                             Clock clock, JsonMapper responseMapper, AgentMetrics metrics) {
         this.store = store;
         this.props = props;
         this.clock = clock;
         this.responseMapper = responseMapper;
+        this.metrics = metrics;
     }
 
     @Around("@annotation(idempotent)")
@@ -102,6 +106,7 @@ public class IdempotencyAspect {
         } catch (Exception e) {
             // FAIL CLOSED。存储不可用时我们无法保证只执行一次，而重复写入的代价
             // 高于短暂不可用。这与 chat 读路径的 fail open 是故意相反的。
+            metrics.idempotency("unavailable");
             log.error("[idem] store unavailable, rejecting write. key={}", storageKey, e);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Idempotency store unavailable; write rejected to avoid duplicate execution");
@@ -110,6 +115,8 @@ public class IdempotencyAspect {
         if (!acquired) {
             return handleExisting(storageKey, requestHash);
         }
+
+        metrics.idempotency("new");
 
         try {
             Object result = pjp.proceed();
@@ -139,6 +146,7 @@ public class IdempotencyAspect {
         try {
             raw = store.get(storageKey);
         } catch (Exception e) {
+            metrics.idempotency("unavailable");
             log.error("[idem] store unavailable on read. key={}", storageKey, e);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Idempotency store unavailable; write rejected to avoid duplicate execution");
@@ -147,6 +155,7 @@ public class IdempotencyAspect {
         if (raw.isEmpty()) {
             // SETNX 与 GET 之间 key 过期了。极罕见，但没有记录就等于没有执行权的证据，
             // 只能让客户端重试 —— 不能假设"大概没执行过"就放行。
+            metrics.idempotency("conflict");
             return conflict("A concurrent request with this " + HEADER_KEY
                     + " is being processed; please retry");
         }
@@ -154,18 +163,21 @@ public class IdempotencyAspect {
         IdempotencyRecord record = CANONICAL.readValue(raw.get(), IdempotencyRecord.class);
 
         if (!requestHash.equals(record.requestHash())) {
+            metrics.idempotency("mismatch");
             log.warn("[idem] key reused with a different payload. key={}", storageKey);
             return problem(HttpStatus.UNPROCESSABLE_ENTITY,
                     HEADER_KEY + " reused with a different request payload");
         }
 
         if (record.state() == IdempotencyRecord.State.COMPLETED) {
+            metrics.idempotency("replayed");
             log.info("[idem] replaying stored response. key={} status={}", storageKey, record.httpStatus());
             return replay(record);
         }
 
         // IN_PROGRESS。服务端绝不轮询等待：轮询会把 servlet 线程占住，高并发下
         // 直接打满线程池，把一个局部竞争放大成整体不可用。让客户端重试才是对的。
+        metrics.idempotency("conflict");
         return conflict("A request with this " + HEADER_KEY + " is currently in progress");
     }
 

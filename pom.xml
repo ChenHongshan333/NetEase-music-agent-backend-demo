@@ -41,6 +41,17 @@
 			<version>3.0.1</version>
 		</dependency>
 
+		<!-- 可观测性。坐标先验证过：Boot 4 仍发布 starter-actuator，
+		     prometheus registry 由 micrometer BOM 管版本，不手写 version。 -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
 		<!-- MySQL -->
 		<dependency>
   			<groupId>com.mysql</groupId>

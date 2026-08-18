@@ -235,6 +235,35 @@ Both directions are covered by tests: `CacheDegradationTest` asserts HTTP 200 wi
 throwing cache, `IdempotencyTest.storeOutageFailsClosed` asserts 503 and that the
 business method never ran.
 
+#### Degrading in the right direction is not enough — it has to be fast
+
+Running the drill against a real stopped Redis exposed that the *direction* was
+correct while the *latency* made it worthless:
+
+| | before | after |
+|---|---|---|
+| read path, Redis down | 200 after **120 s** | 200 after **1.2 s** |
+| write path, Redis down | 503 after **60 s** | 503 after **0.3 s** |
+| `/actuator/health`, Redis down | 503 after 60 s | 200 after **0.06 s** |
+
+Cause: `spring.data.redis.timeout` was unset, so Lettuce used its 60 s default
+command timeout. The read path ate two of them — one on the lookup, one on the
+write-back — hence 120 s. Every one of those requests held a Tomcat worker the whole
+time, so a Redis outage would have exhausted the 200-thread pool within seconds and
+taken down the *entire* service, including the refusal path that needs no Redis at
+all. A graceful-degradation design that stalls for a minute before degrading has
+simply moved the outage, not contained it.
+
+Fixed with an explicit `spring.data.redis.timeout=250ms` /
+`connect-timeout=250ms` in the prod profile. Redis is same-host or same-LAN here and
+`cache_hit` p99 is 26 ms end-to-end, so 250 ms is generous — anything slower than
+that is not a slow Redis, it is an absent one. Verified afterwards that normal
+operation is unaffected: cache hits still land in 11–51 ms.
+
+The lesson generalises: **every timeout that is only reached during an incident is
+untested until you actually cause the incident.** The default was invisible in every
+green test and every benchmark run.
+
 ### 2. "I don't know" is 200; "I'm broken" is 503
 
 The refusal gate answers with HTTP **200** and `hits: 0`. An upstream failure — the
