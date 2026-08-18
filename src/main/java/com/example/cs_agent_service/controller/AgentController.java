@@ -1,8 +1,10 @@
 package com.example.cs_agent_service.controller;
 
+import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.service.ChatService;
 import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,8 +29,13 @@ public class AgentController {
 
     private final ChatService chatService;
 
-    public AgentController(ChatService chatService) {
+    /** 降级时告诉客户端多久之后再来，取熔断器的 OPEN 时长——正好是它下次探测上游的时刻。 */
+    private final long retryAfterSeconds;
+
+    public AgentController(ChatService chatService, ResilienceProperties resilienceProps) {
         this.chatService = chatService;
+        this.retryAfterSeconds =
+                Math.max(1, resilienceProps.getCircuitBreaker().getOpenDurationMs() / 1000);
     }
 
     @GetMapping("/chat")
@@ -47,6 +54,15 @@ public class AgentController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("answer", result.answer());
         body.put("hits", result.hits());
+
+        // 客户端必须能区分"我不知道这个问题"和"我暂时坏了"：
+        // 前者（200 + 拒答）重试多少次结果都一样，后者（503）重试是有意义的。
+        // 混成同一个 200 会让调用方无从决策，只能要么全不重试、要么盲目重试。
+        if (result.degraded()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .header(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds))
+                    .body(body);
+        }
 
         return ResponseEntity.ok(body);
     }

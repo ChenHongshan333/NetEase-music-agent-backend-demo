@@ -1,10 +1,13 @@
 package com.example.cs_agent_service.service;
 
 import com.example.cs_agent_service.config.CacheProperties;
+import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.entity.KnowledgeBase;
 import com.example.cs_agent_service.service.cache.RedisCacheService;
 import com.example.cs_agent_service.service.llm.LlmClient;
+import com.example.cs_agent_service.service.resilience.CircuitBreaker;
+import com.example.cs_agent_service.service.resilience.RetryExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +18,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,8 +62,16 @@ class RefusalGateTest {
         cacheProps.setTtlSeconds(600);
         cacheProps.setRefusalTtlSeconds(30);
 
+        // 韧性组件用默认参数装配。这一组测试关心的是"该不该调上游"，
+        // 不是"调失败了怎么办"——后者归 ChatDegradationTest 管。
+        ResilienceProperties resilienceProps = new ResilienceProperties();
+        Clock clock = Clock.systemUTC();
+
         chatService = new ChatService(
-                knowledgeBaseService, llmClient, cache, cacheProps, new ObjectMapper());
+                knowledgeBaseService, llmClient, cache, cacheProps, new ObjectMapper(),
+                new RetryExecutor(resilienceProps, clock),
+                new CircuitBreaker(resilienceProps, clock),
+                resilienceProps, clock);
     }
 
     @Test

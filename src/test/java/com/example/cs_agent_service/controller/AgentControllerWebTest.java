@@ -1,10 +1,12 @@
 package com.example.cs_agent_service.controller;
 
+import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.service.ChatService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -14,6 +16,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,6 +24,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 只测 HTTP 适配层：参数校验与响应形状。业务链路由 RefusalGateTest 负责。
  */
 @WebMvcTest(AgentController.class)
+// @WebMvcTest 只装配 web 层，不会扫 @ConfigurationProperties，
+// 而 AgentController 需要 ResilienceProperties 来算 Retry-After。
+@EnableConfigurationProperties(ResilienceProperties.class)
 class AgentControllerWebTest {
 
     @Autowired
@@ -51,6 +57,35 @@ class AgentControllerWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.hits").value(0))
                 .andExpect(jsonPath("$.answer").value(ChatService.REFUSAL_ANSWER));
+    }
+
+    @Test
+    @DisplayName("降级 path → 503 + Retry-After，客户端据此知道重试是有意义的")
+    void degradedPath() throws Exception {
+        when(chatService.chat(anyString()))
+                .thenReturn(ChatResult.degraded(ChatService.DEGRADED_ANSWER, 2));
+
+        mockMvc.perform(get("/api/agent/chat").param("question", "会员多少钱"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "30"))
+                .andExpect(jsonPath("$.answer").value(ChatService.DEGRADED_ANSWER))
+                .andExpect(jsonPath("$.hits").value(2));
+    }
+
+    @Test
+    @DisplayName("拒答与降级的状态码必须不同：200 vs 503")
+    void refusalAndDegradedAreDistinguishable() throws Exception {
+        when(chatService.chat(anyString()))
+                .thenReturn(ChatResult.refused(ChatService.REFUSAL_ANSWER, false));
+        mockMvc.perform(get("/api/agent/chat").param("question", "x"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Retry-After"));
+
+        when(chatService.chat(anyString()))
+                .thenReturn(ChatResult.degraded(ChatService.DEGRADED_ANSWER, 1));
+        mockMvc.perform(get("/api/agent/chat").param("question", "x"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().exists("Retry-After"));
     }
 
     @Test

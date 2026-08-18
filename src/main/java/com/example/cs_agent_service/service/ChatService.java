@@ -1,10 +1,15 @@
 package com.example.cs_agent_service.service;
 
 import com.example.cs_agent_service.config.CacheProperties;
+import com.example.cs_agent_service.config.ResilienceProperties;
 import com.example.cs_agent_service.dto.ChatResult;
 import com.example.cs_agent_service.entity.KnowledgeBase;
 import com.example.cs_agent_service.service.cache.RedisCacheService;
 import com.example.cs_agent_service.service.llm.LlmClient;
+import com.example.cs_agent_service.service.llm.LlmException;
+import com.example.cs_agent_service.service.resilience.CircuitBreaker;
+import com.example.cs_agent_service.service.resilience.CircuitOpenException;
+import com.example.cs_agent_service.service.resilience.RetryExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +35,11 @@ public class ChatService {
 
     public static final String REFUSAL_ANSWER = "抱歉，小云暂时还没学会这个问题";
 
+    /** 降级话术。与拒答话术必须不同：一个是"我不知道"，一个是"我暂时坏了"。 */
+    public static final String DEGRADED_ANSWER = "小云暂时无法回答，请稍后再试";
+
+    static final String DEPENDENCY_NAME = "dashscope";
+
     private static final String CACHE_KEY_PREFIX = "agent:chat:v1:";
 
     private static final String SYSTEM_PROMPT = """
@@ -43,19 +54,31 @@ public class ChatService {
     private final RedisCacheService cache;
     private final CacheProperties cacheProps;
     private final ObjectMapper objectMapper;
+    private final RetryExecutor retryExecutor;
+    private final CircuitBreaker circuitBreaker;
+    private final ResilienceProperties resilienceProps;
+    private final Clock clock;
 
     public ChatService(
             KnowledgeBaseService knowledgeBaseService,
             LlmClient llmClient,
             RedisCacheService cache,
             CacheProperties cacheProps,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            RetryExecutor retryExecutor,
+            CircuitBreaker circuitBreaker,
+            ResilienceProperties resilienceProps,
+            Clock clock
     ) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.llmClient = llmClient;
         this.cache = cache;
         this.cacheProps = cacheProps;
         this.objectMapper = objectMapper;
+        this.retryExecutor = retryExecutor;
+        this.circuitBreaker = circuitBreaker;
+        this.resilienceProps = resilienceProps;
+        this.clock = clock;
     }
 
     public ChatResult chat(String question) {
@@ -88,9 +111,25 @@ public class ChatService {
         // 4) 拼 prompt
         String userPrompt = buildUserPrompt(q, hits);
 
-        // 5) 调 LLM
+        // 5) 调 LLM。熔断在外层、重试在内层：熔断打开时连重试循环都不进入，
+        //    否则每个被拒的请求还要先空转 3 次尝试。
         log.info("[chat] retrieval hits={} llm=CALL", hits.size());
-        String answer = llmClient.complete(SYSTEM_PROMPT, userPrompt);
+        String answer;
+        try {
+            long deadline = clock.millis() + resilienceProps.getRequestBudgetMs();
+            answer = circuitBreaker.execute(() ->
+                    retryExecutor.execute(
+                            DEPENDENCY_NAME,
+                            () -> llmClient.complete(SYSTEM_PROMPT, userPrompt),
+                            deadline));
+        } catch (CircuitOpenException | LlmException e) {
+            log.warn("[chat] degraded: {}", e.toString());
+
+            // 降级结果绝对不能进正常答案缓存。上游抖动一下就把一句"我暂时坏了"
+            // 锁进缓存 600 秒，之后即使上游早已恢复，所有问这个问题的用户
+            // 还是会拿到错误答案 —— 典型的缓存投毒。
+            return ChatResult.degraded(DEGRADED_ANSWER, hits.size());
+        }
 
         // 6) 回写缓存并返回
         ChatResult result = ChatResult.answered(answer, hits.size(), false);

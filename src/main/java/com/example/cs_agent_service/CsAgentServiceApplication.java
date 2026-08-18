@@ -20,6 +20,15 @@ public class CsAgentServiceApplication {
 				.build();
 	}
 
+	/**
+	 * 时间从容器里注入而不是直接调 System.currentTimeMillis()，
+	 * 这样熔断器的状态机测试可以手动推进时钟，不必 Thread.sleep 30 秒。
+	 */
+	@Bean
+	public java.time.Clock clock() {
+		return java.time.Clock.systemDefaultZone();
+	}
+
 	public static void main(String[] args) {
 		SpringApplication.run(CsAgentServiceApplication.class, args);
 	}
