@@ -27,12 +27,17 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 - [Design notes](#design-notes)
 - [Configuration](#configuration)
   - [Spring Profiles](#spring-profiles)
+  - [Application settings](#application-settings)
 - [API Reference](#api-reference)
   - [Chat Interface](#chat-interface)
+  - [Write endpoints (idempotent)](#write-endpoints-idempotent)
+  - [Operations](#operations)
 - [Architecture](#architecture)
-  - [1. Data Flow (Fail-Fast + Cache + RAG)](#1-data-flow-fail-fast--cache--rag)
+  - [1. Data Flow (Fail-Fast + Cache + RAG + Resilience)](#1-data-flow-fail-fast--cache--rag--resilience)
   - [2. Repository Structure](#2-repository-structure)
 - [Benchmarks](#benchmarks)
+- [Observability](#observability)
+- [Roadmap / Known Limitations](#roadmap--known-limitations)
 - [Docker Compose Reference](#docker-compose-reference)
 - [AI-Assisted Development (Vibe Coding)](#ai-assisted-development-vibe-coding)
 - [License](#license)
@@ -47,12 +52,23 @@ A lightweight **Retrieval-Augmented Generation (RAG)** backend for high-volume c
 ---
 
 ## Key Features
-- Strict Grounding Policy (Fail-Fast)
-- Dual-Profile Support (Dev vs Prod Simulation)
-- Redis Caching (Hot Query Optimization)
-- Minimal Retrieval Baseline (Top-K)
-> You can refer to the **Project Page** for more detailed explanation. 
-  
+
+- **Refusal gate (fail-fast grounding)** — 0 retrieval hits means no LLM call at all.
+  Worth ~95x at p95 and zero API spend on questions we cannot ground.
+- **Hand-written resilience** — explicit timeouts, full-jitter backoff retry, and a
+  three-state circuit breaker. No resilience4j; `grep -c resilience4j pom.xml` is 0.
+- **Idempotent writes** — `Idempotency-Key` on every write endpoint, with replay,
+  409/422 handling and differentiated 4xx/5xx behaviour.
+- **Opposed degradation directions** — the read path fails open on a Redis outage,
+  the write path fails closed. [Why](#design-notes).
+- **Observability** — request-id correlation, Prometheus metrics with a
+  cardinality guard test, and a health indicator that refuses to mark the instance
+  DOWN for an optional dependency.
+- **Real benchmarks** — [measured, reproducible numbers](#benchmarks), no estimates.
+- **Zero-dependency test suite** — 107 tests, no Redis, no MySQL, no API key, <40s.
+
+> You can refer to the **Project Page** for more detailed explanation.
+
 ---
 
 ## Install
@@ -292,37 +308,72 @@ long one.
 ## Configuration
 
 ### Spring Profiles
-Use `dev` by default and switch to `prod` when running with Docker.
 
-**application.properties**
-```properties
-spring.profiles.default=dev
+| profile | database | cache | LLM | needs |
+|---|---|---|---|---|
+| *(none)* | H2 in-memory | off | DashScope | `DASHSCOPE_API_KEY` |
+| `dev` | H2 in-memory | off | **stub** | nothing at all |
+| `test` | H2 in-memory | off | **stub** | nothing at all (used by CI) |
+| `prod` | MySQL | **on** | DashScope | docker compose + `DASHSCOPE_API_KEY` |
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev    # zero dependencies
+./mvnw spring-boot:run -Dspring-boot.run.profiles=prod   # needs docker compose up
 ```
 
-**application-dev.properties** (H2; example)
+See [`.env.example`](.env.example) for every environment variable the service reads.
+
+### Application settings
+
+All defaults live in `application.properties` and are overridable per profile.
+
 ```properties
-spring.datasource.url=jdbc:h2:mem:testdb
-spring.datasource.driver-class-name=org.h2.Driver
-spring.jpa.hibernate.ddl-auto=update
-```
-
-**application-prod.properties** (MySQL + Redis; example)
-```properties
-# MySQL (prod)
-spring.datasource.url=jdbc:mysql://localhost:3306/cs_agent?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Singapore
-spring.datasource.username=cs
-spring.datasource.password=cs_pass
-spring.jpa.hibernate.ddl-auto=update
-
-# Redis (prod)
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-
-# Cache policy
+# Cache
 agent.cache.enabled=true
 agent.cache.ttl-seconds=600
 agent.cache.refusal-ttl-seconds=30
+
+# LLM: provider and explicit timeouts (OkHttp's defaults leave callTimeout unset)
+agent.llm.provider=dashscope          # dashscope | stub
+agent.llm.model=qwen-plus
+agent.llm.timeout.connect-ms=2000
+agent.llm.timeout.read-ms=8000
+agent.llm.timeout.write-ms=2000
+agent.llm.timeout.call-ms=12000
+
+# Resilience: total budget for the LLM stage, retry and circuit breaker
+agent.resilience.request-budget-ms=25000
+agent.resilience.retry.max-attempts=3
+agent.resilience.retry.base-backoff-ms=200
+agent.resilience.retry.max-backoff-ms=2000
+agent.resilience.circuit-breaker.sliding-window-size=20
+agent.resilience.circuit-breaker.minimum-calls=10
+agent.resilience.circuit-breaker.failure-rate-threshold=50
+agent.resilience.circuit-breaker.open-duration-ms=30000
+agent.resilience.circuit-breaker.half-open-permitted-calls=3
+
+# Idempotency
+agent.idempotency.ttl-hours=24
+agent.idempotency.max-key-length=255
+
+# Actuator: whitelist, never "*"
+management.endpoints.web.exposure.include=health,info,metrics,prometheus
+management.health.redis.enabled=false   # replaced by RedisDegradedHealthIndicator
 ```
+
+Two non-obvious settings that are deliberate rather than incidental:
+
+```properties
+# Releases the JDBC connection before the ~2.4s model call. Left on, Hikari's
+# default pool of 10 becomes the concurrency ceiling. See docs/benchmarks.md.
+spring.jpa.open-in-view=false
+
+# prod profile. Lettuce defaults to a 60s command timeout, which turns a Redis
+# outage into 60-120s hangs and exhausts the Tomcat thread pool.
+spring.data.redis.timeout=250ms
+spring.data.redis.connect-timeout=250ms
+```
+
 ---
 
 ## API Reference
@@ -347,79 +398,129 @@ curl -G "http://localhost:8080/api/agent/chat" --data-urlencode "question=怎么
 * `hits = 0` → fixed refusal (no LLM call)
 * `hits > 0` → LLM-generated answer grounded on Known Info
 
+
+**Status codes:**
+
+| status | meaning | should the client retry? |
+|---|---|---|
+| `200` + `hits > 0` | grounded answer | — |
+| `200` + `hits = 0` | refusal: the knowledge base cannot answer this | **no** — the answer will not change |
+| `400` | `question` missing, blank, or over 500 characters | no, fix the request |
+| `503` + `Retry-After: 30` | upstream model unavailable (circuit open or retries exhausted) | **yes**, after the given delay |
+
+The 200-vs-503 split is deliberate; see [Design notes](#design-notes).
+
+### Write endpoints (idempotent)
+
+`POST /api/knowledge` · `PUT /api/knowledge/{id}` · `DELETE /api/knowledge/{id}` ·
+`POST /api/conversations` · `POST /api/conversations/{id}/messages`
+
+All accept an optional `Idempotency-Key` request header.
+
+```bash
+curl.exe -X POST http://localhost:8080/api/knowledge   -H "Content-Type: application/json"   -H "Idempotency-Key: 8f14e45f-ea23-4f1a-9c1e-2b6f0a1d7c33"   -d '{"question":"云贝有什么用","answer":"...","keywords":"云贝"}'
+```
+
+| situation | response |
+|---|---|
+| header absent | executes normally — the feature is opt-in and backward compatible |
+| first request with this key | executes, response stored for 24 h |
+| same key, same payload | replays the stored response with `Idempotency-Replayed: true`; **no second execution** |
+| same key, different payload | `422` — the key was reused for a different request |
+| same key, first still running | `409` + `Retry-After: 1` — the server never polls on your behalf |
+| key blank or over 255 chars | `400` |
+| idempotency store unavailable | `503` — writes fail closed |
+
+A stored `4xx` is replayed; a `5xx` releases the key so a retry can succeed.
+
+### Operations
+
+| endpoint | purpose |
+|---|---|
+| `GET /health` | plain `OK` liveness string |
+| `GET /actuator/health` | component health; Redis reports `DEGRADED` rather than failing the instance |
+| `GET /actuator/prometheus` | metrics, including the `agent_*` business series |
+| `GET /swagger-ui/index.html` | OpenAPI UI, documents `Idempotency-Key` on every write operation |
+
+Every response carries `X-Request-Id`; send your own to correlate across services.
+
 ---
+
 ## Architecture
 
-### 1. Data Flow (Fail-Fast + Cache + RAG)
+### 1. Data Flow (Fail-Fast + Cache + RAG + Resilience)
 
-1. Input normalization (trim / simple cleanup)
-2. Redis cache lookup (hot query optimization)
-3. Top-K retrieval from KnowledgeBase (K=5)
-4. Refusal gate: if `hits == 0`, return refusal (no LLM)
-5. Prompt assembly: inject Known Info
-6. LLM inference (DashScope OpenAI-compatible endpoint)
-7. Write-back to Redis with TTL (Short TTL for refusals to avoid stale refusals)
+1. `RequestIdFilter` stamps `X-Request-Id` into MDC so every log line below is correlated
+2. Redis cache lookup — hit returns immediately, having touched neither DB nor model
+3. Top-K retrieval from `knowledge_base` (K=5); a second pass with the normalized question if the first misses
+4. **Refusal gate**: `hits == 0` → refusal answer, **no LLM call**, cached for 30 s
+5. Prompt assembly: retrieved answers become the grounding block
+6. LLM call wrapped as `circuitBreaker(retry(call))` — breaker outside, retry inside
+7. Success → write back with 600 s TTL. Failure → 503 + `Retry-After`, and **nothing is cached**
 
 ```mermaid
-flowchart LR
-  U[User Question] --> C[AgentController]
-  C --> KV{Redis Cache}
+flowchart TB
+  U[User Question] --> F[RequestIdFilter<br/>X-Request-Id to MDC]
+  F --> C[AgentController<br/>validate only]
+  C --> S[ChatService]
 
-  %% Read Path: Cache Hit
-  KV -- Hit --> H[Return Cached JSON]
-  H -.->|Could be Refusal or Answer| C
+  S --> KV{Redis Cache}
+  KV -- Hit --> H[200 cached answer]
+  H --> C
 
-  %% Write Path: Cache Miss -> Split Logic
-  KV -- Miss --> R[Top-K Retrieval]
+  KV -- "Miss / Redis down<br/>fail open" --> R[Top-K Retrieval]
 
-  %% Branch 1: No Knowledge (Refusal)
-  R -- Hits=0 --> Z[Refusal Msg]
-  Z -- "Write: Short TTL (30s)" --> W1[Redis: Short-lived refusal cache]
-  W1 --> KV
-  Z --> C
+  R -- "hits = 0" --> Z["200 refusal<br/>no LLM call"]
+  Z -- "write, TTL 30s" --> KV
 
-  %% Branch 2: Knowledge Found (Answer)
-  R -- Hits>0 --> P[Build Prompt]
-  P --> L[DashScope Chat]
-  L -- "Write: Long TTL (10m)" --> W2[Redis: Standard Cache]
-  W2 --> KV
-  L --> C
+  R -- "hits > 0" --> P[Build grounded prompt]
+  P --> CB{Circuit Breaker}
 
-  C --> U
+  CB -- OPEN --> D["503 + Retry-After<br/>NOT cached"]
+  CB -- "CLOSED / HALF_OPEN" --> RT[RetryExecutor<br/>3 attempts, full jitter]
+  RT --> L[DashScope qwen-plus]
 
+  L -- success --> A[200 answer]
+  A -- "write, TTL 600s" --> KV
+  RT -- "retries exhausted" --> D
 ```
 
 ### 2. Repository Structure
 
-Key source files map to the architecture above:
-
-```mermaid
-graph LR
-    %% Root Package
-    Root["src/main/java/com/example/csagent"]
-
-    %% Packages (Folders)
-    PkgCtrl[controller]
-    PkgSvc[service]
-    PkgAi[ai]
-    PkgRepo[repository]
-    PkgEntity[entity]
-
-    %% Files with descriptions (using <br/> for clarity)
-    FileAC["AgentController.java<br/>(API Entry point / REST)"]
-    FileKBS["KnowledgeBaseService.java<br/>(Core Logic: Retrieval + RAG orchestration)"]
-    FileDSC["DashScopeClient.java<br/>(LLM Integration / OpenAI-compatible)"]
-    FileKBR["KnowledgeBaseRepository.java<br/>(DB Layer / JPA)"]
-    FileKB["KnowledgeBase.java<br/>(Data Schema)"]
-
-    %% Structure Relationships
-    Root --> PkgCtrl --> FileAC
-    Root --> PkgSvc
-    PkgSvc --> FileKBS
-    PkgSvc --> PkgAi --> FileDSC
-    Root --> PkgRepo --> FileKBR
-    Root --> PkgEntity --> FileKB
 ```
+src/main/java/com/example/cs_agent_service/
+├── controller/
+│   ├── AgentController          HTTP adaptation only: validate, call, map status
+│   ├── KnowledgeBaseController  CRUD, write endpoints marked @Idempotent
+│   └── ConversationController   conversations and messages
+├── service/
+│   ├── ChatService              the pipeline: cache → retrieve → gate → prompt → LLM
+│   ├── QuestionNormalizer       pure function, iterates to a fixed point
+│   ├── KnowledgeBaseService     retrieval + CRUD, soft delete
+│   ├── llm/
+│   │   ├── LlmClient            interface
+│   │   ├── LlmException         carries retryable + httpStatus
+│   │   ├── DashScopeLlmClient   OkHttp, classifies failures as retryable or not
+│   │   └── StubLlmClient        fixed answer + injectable delay (dev, load tests)
+│   ├── resilience/
+│   │   ├── RetryExecutor        hand-written, full jitter, deadline aware
+│   │   └── CircuitBreaker       hand-written 3-state machine, injectable Clock
+│   └── cache/RedisCacheService  swallows failures — read path fails open
+├── idempotency/
+│   ├── Idempotent               annotation
+│   ├── IdempotencyAspect        @Around: SETNX, replay, 409/422, fail closed
+│   └── IdempotencyStore         propagates failures — write path fails closed
+├── observability/
+│   ├── AgentMetrics             Micrometer, bounded-cardinality tags only
+│   └── RedisDegradedHealthIndicator   UP + DEGRADED, never DOWN
+├── web/RequestIdFilter          MDC in, MDC cleared in finally
+└── config/                      @ConfigurationProperties for cache, timeouts,
+                                 resilience and idempotency
+```
+
+Two classes are worth reading first: [`ChatService`](src/main/java/com/example/cs_agent_service/service/ChatService.java)
+for the whole request pipeline, and [`IdempotencyAspect`](src/main/java/com/example/cs_agent_service/idempotency/IdempotencyAspect.java)
+for the exactly-once write logic.
 
 ---
 
@@ -459,6 +560,96 @@ releasing the connection rather than growing the pool are in
 
 > **Full metadata, repro commands, per-run raw output and the reproducibility
 > check**: [docs/benchmarks.md](docs/benchmarks.md).
+
+---
+
+## Observability
+
+Every response carries `X-Request-Id` (echoed if you send one, generated otherwise),
+and the same id appears in every log line for that request via MDC:
+
+```
+2026-08-18T14:40:35.628+08:00  INFO 44692 --- [nio-8080-exec-3] [my-trace-123] c.e.c.service.ChatService : [chat] cache=MISS key=agent:chat:v1:0a160a7a...
+```
+
+`GET /actuator/prometheus` exposes the business series:
+
+| metric | type | tags | meaning |
+|---|---|---|---|
+| `agent_cache_lookup_total` | counter | `result=hit\|miss` | cache effectiveness |
+| `agent_refusal_total` | counter | `stage=no_hits` | how often the gate fires |
+| `agent_retrieval_hits` | summary | — | distribution of hit counts |
+| `agent_llm_call_seconds` | timer | `outcome=success\|error\|timeout`, `attempt=1\|2\|3` | per-attempt upstream latency |
+| `agent_circuit_state` | gauge | `dependency=dashscope` | 0=CLOSED, 1=HALF_OPEN, 2=OPEN |
+| `agent_idempotency_total` | counter | `result=new\|replayed\|conflict\|mismatch\|unavailable` | write dedup outcomes |
+| `agent_degraded_total` | counter | `reason=circuit_open\|retry_exhausted` | why we shed load |
+
+**Cardinality is enforced, not just intended.** No tag value ever derives from user
+input — not the question, not the `Idempotency-Key`, not a row id. A high-cardinality
+tag is a production incident that looks fine in development, so
+`AgentMetricsTest.noHighCardinalityTags` drives 50 distinct questions through the
+pipeline and asserts the observed tag values are a subset of a hardcoded whitelist.
+Adding a user-derived tag fails the build.
+
+### Why a Redis outage does not mark the instance DOWN
+
+Boot's stock `RedisHealthIndicator` makes `/actuator/health` return 503 when Redis is
+unreachable. Verified that behaviour here, then replaced it, because it is wrong for
+this service: Redis is **optional** on the read path. An instance with a dead Redis
+still answers correctly — it just answers without a cache.
+
+Reporting DOWN would have Kubernetes or the load balancer remove a working instance
+and redistribute its traffic onto the remaining ones, which are hitting the same dead
+Redis. The failure gets amplified rather than contained.
+
+So `RedisDegradedHealthIndicator` returns UP with the problem in the details:
+
+```json
+{"status":"UP","details":{"redis":"DEGRADED",
+ "impact":"chat read path serves without cache; write endpoints requiring Idempotency-Key fail closed with 503",
+ "error":"QueryTimeoutException"}}
+```
+
+Alertable, greppable, and it does not take a healthy instance out of rotation. The
+**database** keeps Boot's default indicator and does fail the instance — that one
+really is required.
+
+Actuator exposure is a whitelist (`health,info,metrics,prometheus`), never `*`;
+`/actuator/env`, `/beans`, `/configprops`, `/threaddump` and `/loggers` return 404,
+asserted by test.
+
+---
+
+## Roadmap / Known Limitations
+
+Stating these plainly is more useful than letting a reader discover them.
+
+**Retrieval is lexical, not semantic.** `LIKE %q%` over `question` and `keywords`,
+with a hand-written normalizer stripping punctuation and filler words as a second
+pass. It cannot match a paraphrase that shares no substring. Embeddings plus a vector
+index (pgvector, Milvus) is the obvious next step and would change the character of
+the project — which is exactly why it is scoped out rather than half-done.
+
+**Chat is single-turn.** `/api/agent/chat` neither reads nor writes the
+`conversations` tables, so there is no context carried between questions. The
+conversation model exists and is tested, but is not yet wired into the chat pipeline.
+
+**No streaming.** Responses arrive whole after ~2.4 s. SSE would make the wait feel
+far shorter without changing the measured latency.
+
+**No authentication or rate limiting.** Anyone who can reach the port can spend API
+quota. Fine for a demo, not for anything exposed.
+
+**Cache invalidation is TTL-only.** Editing a knowledge-base entry does not evict
+answers derived from it; they age out within 600 s. A version-number namespace in the
+cache key would fix this cheaply.
+
+**Logs are plain text.** Structured JSON logging (`logstash-logback-encoder`) would
+make the request-id correlation machine-queryable rather than greppable.
+
+**Benchmarks are single-host.** Load generator, service, MySQL and Redis all share
+one laptop, so absolute throughput is optimistic relative to a real deployment with
+network hops between tiers. The ratios are the trustworthy part.
 
 ---
 
