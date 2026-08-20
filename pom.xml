@@ -41,6 +41,17 @@
 			<version>3.0.1</version>
 		</dependency>
 
+		<!-- 可观测性。坐标先验证过：Boot 4 仍发布 starter-actuator，
+		     prometheus registry 由 micrometer BOM 管版本，不手写 version。 -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
 		<!-- MySQL -->
 		<dependency>
   			<groupId>com.mysql</groupId>
@@ -81,6 +92,14 @@
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+		<!-- JUnit 5 + Mockito + AssertJ + spring-test。Boot 4 里 @MockBean 已移除，
+		     用 org.springframework.test.context.bean.override.mockito.@MockitoBean 代替；
+		     @WebMvcTest / @DataJpaTest 也搬到了 spring-boot-{webmvc,data-jpa}-test 的新包下。 -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -1,0 +1,236 @@
+package com.example.cs_agent_service.service;
+
+import com.example.cs_agent_service.config.CacheProperties;
+import com.example.cs_agent_service.config.ResilienceProperties;
+import com.example.cs_agent_service.dto.ChatResult;
+import com.example.cs_agent_service.entity.KnowledgeBase;
+import com.example.cs_agent_service.observability.AgentMetrics;
+import com.example.cs_agent_service.service.cache.RedisCacheService;
+import com.example.cs_agent_service.service.llm.LlmClient;
+import com.example.cs_agent_service.service.llm.LlmException;
+import com.example.cs_agent_service.service.resilience.CircuitBreaker;
+import com.example.cs_agent_service.service.resilience.CircuitOpenException;
+import com.example.cs_agent_service.service.resilience.RetryExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * chat 链路的编排者：缓存 → 检索 → 拒答闸门 → 拼 prompt → 调 LLM → 回写缓存。
+ *
+ * <p>控制器只做 HTTP 适配，业务顺序全部在这里，这样才能被单元测试逐段验证。
+ */
+@Service
+public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+
+    public static final String REFUSAL_ANSWER = "抱歉，小云暂时还没学会这个问题";
+
+    /** 降级话术。与拒答话术必须不同：一个是"我不知道"，一个是"我暂时坏了"。 */
+    public static final String DEGRADED_ANSWER = "小云暂时无法回答，请稍后再试";
+
+    static final String DEPENDENCY_NAME = "dashscope";
+
+    private static final String CACHE_KEY_PREFIX = "agent:chat:v1:";
+
+    private static final String SYSTEM_PROMPT = """
+            你是网易云音乐智能客服小云，请用亲切活泼的语气回答。
+            必须优先基于【已知信息】回答；
+            如果已知信息不足，就回答：'抱歉，小云暂时还没学会这个问题'。
+            不要编造事实。
+            """.trim();
+
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final LlmClient llmClient;
+    private final RedisCacheService cache;
+    private final CacheProperties cacheProps;
+    private final ObjectMapper objectMapper;
+    private final RetryExecutor retryExecutor;
+    private final CircuitBreaker circuitBreaker;
+    private final ResilienceProperties resilienceProps;
+    private final Clock clock;
+    private final AgentMetrics metrics;
+
+    public ChatService(
+            KnowledgeBaseService knowledgeBaseService,
+            LlmClient llmClient,
+            RedisCacheService cache,
+            CacheProperties cacheProps,
+            ObjectMapper objectMapper,
+            RetryExecutor retryExecutor,
+            CircuitBreaker circuitBreaker,
+            ResilienceProperties resilienceProps,
+            Clock clock,
+            AgentMetrics metrics
+    ) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.llmClient = llmClient;
+        this.cache = cache;
+        this.cacheProps = cacheProps;
+        this.objectMapper = objectMapper;
+        this.retryExecutor = retryExecutor;
+        this.circuitBreaker = circuitBreaker;
+        this.resilienceProps = resilienceProps;
+        this.clock = clock;
+        this.metrics = metrics;
+    }
+
+    public ChatResult chat(String question) {
+        if (question == null || question.trim().isEmpty()) {
+            throw new IllegalArgumentException("question 不能为空");
+        }
+
+        String q = question.trim();
+        log.info("[chat] q='{}' cacheEnabled={}", q, cacheProps.isEnabled());
+        String cacheKey = buildCacheKey(q);
+
+        // 1) 缓存查询（命中直接返回）
+        Optional<ChatResult> cached = readCache(cacheKey);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+
+        // 2) 检索
+        List<KnowledgeBase> hits = knowledgeBaseService.searchTop5(q);
+
+        metrics.retrievalHits(hits == null ? 0 : hits.size());
+
+        // 3) 拒答闸门：0 命中绝不调用 LLM
+        if (hits == null || hits.isEmpty()) {
+            metrics.refusal();
+            ChatResult result = ChatResult.refused(REFUSAL_ANSWER, false);
+            // 拒答用很短的 TTL：刚补进知识库的条目要能快速生效
+            writeCacheSafely(cacheKey, result, cacheProps.getRefusalTtlSeconds());
+            log.info("[chat] cache=REFUSAL key={}", cacheKey);
+            return result;
+        }
+
+        // 4) 拼 prompt
+        String userPrompt = buildUserPrompt(q, hits);
+
+        // 5) 调 LLM。熔断在外层、重试在内层：熔断打开时连重试循环都不进入，
+        //    否则每个被拒的请求还要先空转 3 次尝试。
+        log.info("[chat] retrieval hits={} llm=CALL", hits.size());
+        String answer;
+        try {
+            long deadline = clock.millis() + resilienceProps.getRequestBudgetMs();
+            answer = circuitBreaker.execute(() ->
+                    retryExecutor.execute(
+                            DEPENDENCY_NAME,
+                            () -> llmClient.complete(SYSTEM_PROMPT, userPrompt),
+                            deadline));
+        } catch (CircuitOpenException | LlmException e) {
+            String reason = e instanceof CircuitOpenException ? "circuit_open" : "retry_exhausted";
+            metrics.degraded(reason);
+            log.warn("[chat] degraded reason={}: {}", reason, e.toString());
+
+            // 降级结果绝对不能进正常答案缓存。上游抖动一下就把一句"我暂时坏了"
+            // 锁进缓存 600 秒，之后即使上游早已恢复，所有问这个问题的用户
+            // 还是会拿到错误答案 —— 典型的缓存投毒。
+            return ChatResult.degraded(DEGRADED_ANSWER, hits.size());
+        }
+
+        // 6) 回写缓存并返回
+        ChatResult result = ChatResult.answered(answer, hits.size(), false);
+        writeCacheSafely(cacheKey, result, cacheProps.getTtlSeconds());
+        return result;
+    }
+
+    private String buildUserPrompt(String q, List<KnowledgeBase> hits) {
+        StringBuilder known = new StringBuilder();
+        known.append("已知信息：\n");
+        for (int i = 0; i < hits.size(); i++) {
+            String ans = hits.get(i).getAnswer();
+            if (ans == null) {
+                ans = "";
+            }
+            known.append("[").append(i + 1).append("] ").append(ans).append("\n");
+        }
+        known.append("用户问题：").append(q);
+        return known.toString();
+    }
+
+    private Optional<ChatResult> readCache(String cacheKey) {
+        if (!cacheProps.isEnabled()) {
+            return Optional.empty();
+        }
+
+        // 读路径 fail open：缓存的任何问题（连接失败、超时、反序列化失败）都降级为 cache miss。
+        // RedisCacheService 内部已经吞了 Redis 异常，这里再兜一层是为了不把正确性依赖在
+        // 协作者的实现细节上——ChatService 自己就必须能扛住一个会抛异常的缓存。
+        try {
+            Optional<String> raw = cache.get(cacheKey);
+            if (raw.isEmpty()) {
+                metrics.cacheLookup(false);
+                log.info("[chat] cache=MISS key={}", cacheKey);
+                return Optional.empty();
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> payload = objectMapper.readValue(raw.get(), Map.class);
+            String answer = String.valueOf(payload.get("answer"));
+            int hits = payload.get("hits") instanceof Number n ? n.intValue() : 0;
+            metrics.cacheLookup(true);
+            log.info("[chat] cache=HIT key={}", cacheKey);
+            return Optional.of(hits == 0
+                    ? ChatResult.refused(answer, true)
+                    : ChatResult.answered(answer, hits, true));
+        } catch (Exception e) {
+            metrics.cacheLookup(false);
+            log.warn("[chat] cache read failed, degrade to miss. key={}", cacheKey, e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 缓存 key：版本前缀 + sha256(trim 后的问题)，避免特殊字符与超长 key。
+     */
+    private String buildCacheKey(String question) {
+        return CACHE_KEY_PREFIX + sha256Hex(question.trim());
+    }
+
+    private static String sha256Hex(String s) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(s.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            // 极端兜底：仍能工作，只是 redis key 不够安全
+            return s;
+        }
+    }
+
+    /**
+     * 缓存写失败绝不能打断主链路。
+     */
+    private void writeCacheSafely(String key, ChatResult result, long ttlSeconds) {
+        if (!cacheProps.isEnabled() || ttlSeconds <= 0) {
+            return;
+        }
+
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("answer", result.answer());
+            payload.put("hits", result.hits());
+            String json = objectMapper.writeValueAsString(payload);
+            log.info("[chat] cache=WRITE key={} ttl={}s", key, ttlSeconds);
+            cache.set(key, json, ttlSeconds);
+        } catch (Exception ignored) {
+            // ignore all to keep main flow stable
+        }
+    }
+}

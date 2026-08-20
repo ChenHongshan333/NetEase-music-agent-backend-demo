@@ -213,14 +213,52 @@
                   KnowledgeBase updates.</li>
               </ul>
             </li>
-            <li><strong>Stability:</strong> Redis failures are logged as warnings; the ...tically falls back to
-              DB+LLM without breaking the user request.</li>
+            <li><strong>Stability:</strong> Redis failures are logged as warnings; the read path degrades to a cache miss and
+              falls back to DB+LLM without breaking the user request.</li>
           </ul>
 
           <h3 class="title is-4">Minimal Retrieval Baseline (Top-K)</h3>
           <ul>
             <li>Top-K lexical retrieval (K=5) over KnowledgeBase (Spring Data JPA)</li>
             <li>Optional query normalization + retry to improve recall on noisy inputs</li>
+            <li>LIKE metacharacters in user input are escaped, so a question of
+              "<code>%</code>" cannot match the whole table and bypass the refusal gate</li>
+          </ul>
+
+          <h3 class="title is-4">Resilience (hand-written, no resilience4j)</h3>
+          <ul>
+            <li><strong>Explicit timeouts:</strong> connect / read / write / call, all configurable.
+              OkHttp leaves <code>callTimeout</code> unset by default, which lets a slowly
+              dribbling upstream hold a thread indefinitely.</li>
+            <li><strong>Full-jitter backoff:</strong> <code>sleep = random(0, min(cap, base * 2^attempt))</code>.
+              The randomness is the point — fixed backoff wakes every affected client at the
+              same instant and knocks the recovering upstream back over.</li>
+            <li><strong>Circuit breaker:</strong> three states, counting sliding window, bounded
+              half-open probes. Only retryable failures count, so our own malformed request
+              cannot trip it.</li>
+            <li><strong>Degradation:</strong> 503 + <code>Retry-After</code>, and the degraded
+              answer is never written to the cache.</li>
+          </ul>
+
+          <h3 class="title is-4">Idempotent Writes (Idempotency-Key)</h3>
+          <ul>
+            <li>Opt-in header on every write endpoint; same key + same payload replays the stored
+              response instead of executing twice</li>
+            <li>Same key + different payload → 422; still in flight → 409 + <code>Retry-After</code>
+              (the server never polls on the client's behalf)</li>
+            <li>A stored 4xx is replayed; a 5xx releases the key so a retry can succeed</li>
+            <li><strong>Fails closed</strong> when the store is unavailable — deliberately the
+              opposite of the read path</li>
+          </ul>
+
+          <h3 class="title is-4">Observability</h3>
+          <ul>
+            <li><code>X-Request-Id</code> in MDC and echoed back; cleared in a
+              <code>finally</code> so pooled threads cannot leak it into the next request</li>
+            <li>Prometheus metrics for cache, refusals, retrieval depth, per-attempt upstream
+              latency, circuit state, idempotency outcomes and degradations</li>
+            <li>A test drives 50 distinct questions through the pipeline and fails the build if
+              any metric tag value derives from user input</li>
           </ul>
 
         </div>
@@ -241,7 +279,7 @@
           <div class="arch-left">
             <div class="content has-text-justified pp-body">
 
-              <h3 class="title is-4">Data Flow (Fail-Fast + Cache + RAG)</h3>
+              <h3 class="title is-4">Data Flow (Fail-Fast + Cache + RAG + Resilience)</h3>
               <ol>
                 <li>Input normalization (trim / simple cleanup)</li>
                 <li>Redis cache lookup (hot query optimization)</li>
@@ -268,39 +306,148 @@
 
     <!-- Mermaid 源码（隐藏） -->
     <script type="text/plain" id="arch-mermaid-src">
-flowchart LR
-  U[User Question] --> C[AgentController]
-  C --> KV{Redis Cache}
+flowchart TB
+  U[User Question] --> F[RequestIdFilter]
+  F --> C[AgentController<br/>validate only]
+  C --> S[ChatService]
 
-  %% Read Path: Cache Hit
-  KV -- Hit --> H[Return Cached JSON]
-  H -.->|Could be Refusal or Answer| C
+  S --> KV{Redis Cache}
+  KV -- Hit --> H[200 cached answer]
+  H --> C
 
-  %% Write Path: Cache Miss -> Split Logic
-  KV -- Miss --> R[Top-K Retrieval]
+  KV -- "Miss / Redis down<br/>fail open" --> R[Top-K Retrieval]
 
-  %% Branch 1: No Knowledge (Refusal)
-  R -- Hits=0 --> Z[Refusal Msg]
-  Z -- "Write: Short TTL (30s)" --> W1[Redis: Short-lived refusal cache]
-  W1 --> KV
-  Z --> C
+  R -- "hits = 0" --> Z["200 refusal<br/>no LLM call"]
+  Z -- "write, TTL 30s" --> KV
 
-  %% Branch 2: Knowledge Found (Answer)
-  R -- Hits>0 --> P[Build Prompt]
-  P --> L[DashScope Chat]
-  L -- "Write: Long TTL (10m)" --> W2[Redis: Standard Cache]
-  W2 --> KV
-  L --> C
+  R -- "hits > 0" --> P[Build grounded prompt]
+  P --> CB{Circuit Breaker}
 
-  C --> U
+  CB -- OPEN --> D["503 + Retry-After<br/>NOT cached"]
+  CB -- "CLOSED / HALF_OPEN" --> RT[RetryExecutor<br/>3 attempts, full jitter]
+  RT --> L[DashScope qwen-plus]
 
-    </script>
+  L -- success --> A[200 answer]
+  A -- "write, TTL 600s" --> KV
+  RT -- "retries exhausted" --> D
+
+</script>
 
     <!-- Mermaid 全屏 Overlay -->
     <div id="mermaid-overlay" class="mermaid-overlay is-hidden">
       <div class="mermaid-overlay-inner"></div>
     </div>
 
+
+
+    <!-- ===================== -->
+    <!-- Benchmarks            -->
+    <!-- ===================== -->
+    <section class="section hero is-light pp-wide" id="benchmarks">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">Benchmarks</h2>
+
+        <div class="content has-text-justified pp-body">
+          <p>
+            Measured on 2026-08-18, <code>prod</code> profile (MySQL + Redis via docker compose),
+            AMD Ryzen 7 8745H / 16 logical cores, JDK 17, Spring Boot 4.0.1.
+            <strong>Nothing here is estimated.</strong> Full metadata, repro commands and raw
+            per-run output are in
+            <a href="https://github.com/ChenHongshan333/Netease-music-agent-backend-demo/blob/main/docs/benchmarks.md">docs/benchmarks.md</a>.
+          </p>
+
+          <table>
+            <thead>
+              <tr><th>scenario</th><th>n</th><th>conc.</th><th>p50</th><th>p95</th><th>throughput</th><th>upstream</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>refusal</code> &mdash; gate fires</td><td>500</td><td>20</td><td>23.4 ms</td><td>33.3 ms</td><td>778 req/s</td><td>not called</td></tr>
+              <tr><td><code>cache_hit</code></td><td>500</td><td>20</td><td>13.5 ms</td><td>21.9 ms</td><td>1321 req/s</td><td>not called</td></tr>
+              <tr><td><code>llm_path</code> &mdash; latency</td><td>20</td><td>1</td><td>2364 ms</td><td>3175 ms</td><td>&mdash;</td><td><strong>real DashScope</strong></td></tr>
+              <tr><td><code>llm_path</code> &mdash; throughput</td><td>500</td><td>20</td><td>2401 ms</td><td>2446 ms</td><td>8.3 req/s</td><td>stub, 2364 ms injected</td></tr>
+            </tbody>
+          </table>
+
+          <ul>
+            <li><strong>The refusal gate is worth ~95&times; at p95</strong> (33 ms vs 3175 ms), and
+              it spends zero API quota.</li>
+            <li><strong>The service adds 1.6% on top of upstream latency.</strong> With the upstream
+              pinned to a known 2364 ms, measured p50 is 2401 ms &mdash; 37 ms for two SELECTs, prompt
+              assembly and two Redis operations. Throughput lands within 2% of the theoretical
+              <code>20 / 2.364 s</code>, so at concurrency 20 the service adds no queueing of its own.</li>
+          </ul>
+
+          <p>
+            The real-DashScope row and the stubbed row measure different things on purpose: the
+            first is what a user waits, the second is what the service can carry regardless of how
+            the upstream feels today. They are not interchangeable.
+          </p>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ===================== -->
+    <!-- What the drills found -->
+    <!-- ===================== -->
+    <section class="section hero alt-white pp-wide" id="findings">
+      <div class="container is-max-desktop">
+        <h2 class="title is-3">What Measuring Actually Found</h2>
+
+        <div class="content has-text-justified pp-body">
+          <p>
+            The load test and the failure drills were not decoration. Each of these was invisible
+            in a green test suite and only appeared under real load or real failure.
+          </p>
+
+          <h3 class="title is-4">1. <code>open-in-view</code> capped concurrency at the connection pool</h3>
+          <p>
+            The first throughput run reported 3.5 req/s where the configuration should have given
+            8.3 &mdash; exactly half, with p50 at twice the injected delay. Only ~10 requests were
+            ever in flight, and 10 is Hikari's default pool size. Cause:
+            <code>spring.jpa.open-in-view</code> defaults to on, pinning a JDBC connection for the
+            whole request including the 2.4 s model call that touches no database. The connection
+            pool, not the 200-thread Tomcat executor, was the ceiling.
+          </p>
+          <p>
+            Fixed by <em>releasing the connection</em> rather than growing the pool &mdash; a bigger
+            pool just moves the ceiling while connections still idle through a 2.4 s wait.
+          </p>
+
+          <h3 class="title is-4">2. Graceful degradation that took two minutes</h3>
+          <p>
+            With Redis stopped, the read path returned 200 after <strong>120 s</strong> and the write
+            path 503 after <strong>60 s</strong>. The <em>direction</em> was right; the latency made
+            it worthless. Lettuce's default command timeout is 60 s, and the read path ate two of
+            them. Every such request held a Tomcat worker for a full minute, so a Redis outage would
+            have exhausted the thread pool in seconds and taken down even the refusal path &mdash;
+            which needs no Redis at all.
+          </p>
+          <p>
+            Explicit 250 ms timeouts brought it to 1.2 s / 0.3 s. Degradation that stalls before it
+            degrades has relocated the outage, not contained it.
+          </p>
+
+          <h3 class="title is-4">3. LIKE metacharacters bypassed the refusal gate</h3>
+          <p>
+            User input flowed unescaped into <code>LIKE CONCAT('%', :q, '%')</code>. A question of
+            "<code>%</code>" matched the whole table, so retrieval reported 5 hits, the refusal gate
+            did not fire, and the model was asked to answer using five unrelated knowledge entries
+            &mdash; a confident hallucination plus a wasted API call. A test calls the raw query
+            directly and asserts it returns 5 rows, so the bug is demonstrated rather than merely
+            asserted away.
+          </p>
+
+          <h3 class="title is-4">4. Seed data duplicating on every restart</h3>
+          <p>
+            <code>spring.sql.init.mode=always</code> with unguarded INSERTs is harmless on dev's
+            fresh in-memory H2, but the compose MySQL volume had grown to 300 rows across 10
+            distinct questions. Top-5 retrieval was returning five copies of one entry, so the
+            prompt carried five identical grounding paragraphs.
+          </p>
+        </div>
+      </div>
+    </section>
 
     <!-- Image carousel -->
     <section class="hero is-small is-light">

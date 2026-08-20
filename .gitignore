@@ -35,6 +35,8 @@ build/
 ### Secrets / local overrides ###
 .env
 .env.*
+# ...but the template must be committed; it documents the required vars.
+!.env.example
 application-local.properties
 application-local.yml
 *.key
